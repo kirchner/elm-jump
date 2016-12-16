@@ -1,7 +1,10 @@
 module Main exposing (..)
 
+import AnimationFrame
 import Html exposing (Html)
 import Html.Events as Events
+import Svg
+import Svg.Attributes as Svg
 import Task
 import Time exposing (Time)
 
@@ -10,17 +13,19 @@ import Time exposing (Time)
 
 
 type alias Model =
-    { state : Maybe ( State, Time )
-    , time : Time
+    { state : State
+    , stateTime : Time
+    , currentTime : Time
     , paused : Bool
     }
 
 
 defaultModel : Model
 defaultModel =
-    { state = Nothing
-    , time = Time.inMilliseconds 0
+    { state = defaultState
+    , stateTime = 0 * Time.millisecond
     , paused = True
+    , currentTime = 0 * Time.millisecond
     }
 
 
@@ -50,17 +55,47 @@ step dt state =
 
 
 
+-- DRAW
+
+
+draw : Time -> State -> Html m
+draw dt state =
+    let
+        newState =
+            step dt state
+
+        offset =
+            sin <| (toFloat newState.counter / 1000)
+    in
+        Svg.svg
+            [ Svg.width "600"
+            , Svg.height "400"
+            , Svg.viewBox "0 0 600 400"
+            ]
+            [ Svg.circle
+                [ Svg.cx "300"
+                , Svg.cy "200"
+                , Svg.r <| toString <| 55 + 50 * offset
+                , Svg.fill "green"
+                ]
+                []
+            ]
+
+
+
 -- MSG
 
 
 type Msg
     = NoOp
-    | Tick Time
-    | InitState Time
+    | Init Time
+    | Pause Time
     | UnPause Time
+    | Tick Time
     | Reset
     | Run
-    | Pause
+    | Stop
+    | Redraw Time
 
 
 
@@ -69,7 +104,12 @@ type Msg
 
 init : ( Model, Cmd Msg )
 init =
-    ( defaultModel, Task.perform InitState Time.now )
+    ( defaultModel
+    , Cmd.batch
+        [ Task.perform Init Time.now
+        , Task.perform Redraw Time.now
+        ]
+    )
 
 
 
@@ -82,58 +122,64 @@ update msg model =
         NoOp ->
             ( model, Cmd.none )
 
-        Tick newTime ->
-            case model.state of
-                Just ( state, time ) ->
-                    let
-                        dt =
-                            newTime - time
+        Init currentTime ->
+            update (Redraw currentTime)
+                { model
+                    | state = defaultState
+                    , stateTime = currentTime
+                    , paused = True
+                }
 
-                        newState =
-                            if model.paused then
-                                state
-                            else
-                                step dt state
-                    in
+        Pause currentTime ->
+            if model.paused then
+                model ! []
+            else
+                let
+                    newState =
+                        step (currentTime - model.stateTime) model.state
+                in
+                    update (Redraw currentTime)
                         { model
-                            | time = newTime
-                            , state = Just ( newState, newTime )
+                            | state = newState
+                            , stateTime = currentTime
+                            , paused = True
                         }
-                            ! []
-
-                Nothing ->
-                    ( model, Cmd.none )
-
-        InitState time ->
-            { model
-                | state = Just ( defaultState, time )
-                , paused = True
-            }
-                ! []
 
         UnPause currentTime ->
-            case model.state of
-                Just ( state, time ) ->
+            if model.paused then
+                update (Redraw currentTime)
                     { model
-                        | state = Just ( state, currentTime )
+                        | stateTime = currentTime
+                        , paused = False
                     }
-                        ! []
+            else
+                model ! []
 
-                Nothing ->
-                    ( model, Cmd.none )
+        Tick currentTime ->
+            if model.paused then
+                model ! []
+            else
+                let
+                    newState =
+                        step (currentTime - model.stateTime) model.state
+                in
+                    update (Redraw currentTime)
+                        { model
+                            | state = newState
+                            , stateTime = currentTime
+                        }
 
         Reset ->
-            ( model
-            , Task.perform InitState Time.now
-            )
+            ( model, Task.perform Init Time.now )
 
         Run ->
-            ( { model | paused = False }
-            , Task.perform UnPause Time.now
-            )
+            ( model, Task.perform UnPause Time.now )
 
-        Pause ->
-            { model | paused = True } ! []
+        Stop ->
+            ( model, Task.perform Pause Time.now )
+
+        Redraw currentTime ->
+            { model | currentTime = currentTime } ! []
 
 
 
@@ -147,9 +193,15 @@ subscriptions model =
             if model.paused then
                 Sub.none
             else
-                Time.every (100 * Time.millisecond) Tick
+                Time.every (2000 * Time.millisecond) Tick
+
+        redraw =
+            if model.paused then
+                Sub.none
+            else
+                AnimationFrame.times Redraw
     in
-        Sub.batch [ tick ]
+        Sub.batch [ tick, redraw ]
 
 
 
@@ -160,14 +212,7 @@ view : Model -> Html Msg
 view model =
     let
         render =
-            case model.state of
-                Just ( state, time ) ->
-                    [ Html.div [] [ Html.text <| toString state.counter ]
-                    , Html.div [] [ Html.text <| toString time ]
-                    ]
-
-                Nothing ->
-                    []
+            [ draw (model.currentTime - model.stateTime) model.state ]
     in
         Html.div [] <|
             List.concat
@@ -175,11 +220,13 @@ view model =
                         [ Events.onClick Reset ]
                         [ Html.text "reset" ]
                   , Html.button
+                        [ Events.onClick Stop ]
+                        [ Html.text "stop" ]
+                  , Html.button
                         [ Events.onClick Run ]
                         [ Html.text "run" ]
-                  , Html.button
-                        [ Events.onClick Pause ]
-                        [ Html.text "pause" ]
+                  , Html.div [] [ Html.text <| "current time: " ++ (toString model.currentTime) ]
+                  , Html.div [] [ Html.text <| "state time: " ++ (toString model.stateTime) ]
                   ]
                 , render
                 ]
