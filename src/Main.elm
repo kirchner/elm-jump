@@ -18,10 +18,8 @@
 
 module Main exposing (..)
 
-import AnimationFrame
 import Html exposing (Html)
 import Html.Events as Events
-import Keyboard
 import Math.Vector2
     exposing
         ( Vec2
@@ -34,29 +32,8 @@ import Math.Vector2
         )
 import Svg exposing (Svg)
 import Svg.Attributes as Svg
-import Task
 import Time exposing (Time)
-
-
--- MODEL
-
-
-type alias Model =
-    { state : State
-    , stateTime : Time
-    , currentTime : Time
-    , paused : Bool
-    }
-
-
-defaultModel : Model
-defaultModel =
-    { state = defaultState
-    , stateTime = 0 * Time.millisecond
-    , paused = True
-    , currentTime = 0 * Time.millisecond
-    }
-
+import Engine
 
 
 -- STATE
@@ -186,21 +163,11 @@ drawGround state =
 
 
 
--- MSG
+-- CMD
 
 
-type Msg
+type Cmd
     = NoOp
-    | Init Time
-    | Pause Time
-    | UnPause Time
-    | Tick Time
-    | Reset
-    | Run
-    | Stop
-    | Redraw Time
-    | KeyDown Keyboard.KeyCode
-    | KeyUp Keyboard.KeyCode
     | Jump
     | Move Direction
     | Halt
@@ -212,120 +179,46 @@ type Direction
 
 
 
--- INIT
+-- EXECUTE
 
 
-init : ( Model, Cmd Msg )
-init =
-    ( defaultModel
-    , Cmd.batch
-        [ Task.perform Init Time.now
-        , Task.perform Redraw Time.now
-        ]
-    )
-
-
-
--- UPDATE
-
-
-update : Msg -> Model -> ( Model, Cmd Msg )
-update msg model =
-    case msg of
+execute : Cmd -> State -> State
+execute cmd state =
+    case cmd of
         NoOp ->
-            ( model, Cmd.none )
+            state
 
-        Init currentTime ->
-            update (Redraw currentTime)
-                { model
-                    | state = defaultState
-                    , stateTime = currentTime
-                    , paused = True
-                }
-
-        Pause currentTime ->
-            if model.paused then
-                model ! []
-            else
-                let
-                    newState =
-                        step (currentTime - model.stateTime) model.state
-                in
-                    update (Redraw currentTime)
-                        { model
-                            | state = newState
-                            , stateTime = currentTime
-                            , paused = True
-                        }
-
-        UnPause currentTime ->
-            if model.paused then
-                update (Redraw currentTime)
-                    { model
-                        | stateTime = currentTime
-                        , paused = False
-                    }
-            else
-                model ! []
-
-        Tick currentTime ->
-            if model.paused then
-                model ! []
-            else
-                let
-                    newState =
-                        step (currentTime - model.stateTime) model.state
-                in
-                    update (Redraw currentTime)
-                        { model
-                            | state = newState
-                            , stateTime = currentTime
-                        }
-
-        Reset ->
-            ( model, Task.perform Init Time.now )
-
-        Run ->
-            ( model, Task.perform UnPause Time.now )
-
-        Stop ->
-            ( model, Task.perform Pause Time.now )
-
-        Redraw currentTime ->
-            { model | currentTime = currentTime } ! []
-
-        KeyDown keycode ->
-            case keycode of
-                -- spacebar
-                32 ->
-                    update Jump model
-
-                -- left
-                37 ->
-                    update (Move Left) model
-
-                -- right
-                39 ->
-                    update (Move Right) model
-
-                _ ->
-                    model ! []
-
-        KeyUp keycode ->
-            case keycode of
-                -- left
-                37 ->
-                    update Halt model
-
-                -- right
-                39 ->
-                    update Halt model
-
-                _ ->
-                    model ! []
-
+        --        KeyDown keycode ->
+        --            case keycode of
+        --                -- spacebar
+        --                32 ->
+        --                    update Jump model
+        --
+        --                -- left
+        --                37 ->
+        --                    update (Move Left) model
+        --
+        --                -- right
+        --                39 ->
+        --                    update (Move Right) model
+        --
+        --                _ ->
+        --                    model ! []
+        --
+        --        KeyUp keycode ->
+        --            case keycode of
+        --                -- left
+        --                37 ->
+        --                    update Halt model
+        --
+        --                -- right
+        --                39 ->
+        --                    update Halt model
+        --
+        --                _ ->
+        --                    model ! []
         Jump ->
-            model ! []
+            state
 
         Move direction ->
             let
@@ -338,10 +231,9 @@ update msg model =
                             0.1
 
                 newState =
-                    model.state |> (\state -> { state | velocity = newVelocity })
+                    { state | velocity = newVelocity }
             in
-                { model | state = newState }
-                    ! [ Task.perform Tick Time.now ]
+                newState
 
         Halt ->
             let
@@ -349,84 +241,28 @@ update msg model =
                     0
 
                 newState =
-                    model.state |> (\state -> { state | velocity = newVelocity })
+                    { state | velocity = newVelocity }
             in
-                { model | state = newState }
-                    ! [ Task.perform Tick Time.now ]
-
-
-
--- SUBSCRIPTIONS
-
-
-subscriptions : Model -> Sub Msg
-subscriptions model =
-    let
-        --        tick =
-        --            if model.paused then
-        --                Sub.none
-        --            else
-        --                Time.every (100 * Time.millisecond) Tick
-        redraw =
-            if model.paused then
-                Sub.none
-            else
-                AnimationFrame.times Tick
-
-        keyDowns =
-            Keyboard.downs KeyDown
-
-        keyUps =
-            Keyboard.ups KeyUp
-    in
-        Sub.batch
-            --            [ tick
-            [ redraw
-            , keyDowns
-            , keyUps
-            ]
-
-
-
--- VIEW
-
-
-view : Model -> Html Msg
-view model =
-    let
-        render =
-            [ draw (model.currentTime - model.stateTime) model.state ]
-    in
-        Html.div [] <|
-            List.concat
-                [ [ Html.button
-                        [ Events.onClick Reset ]
-                        [ Html.text "reset" ]
-                  , Html.button
-                        [ Events.onClick Stop ]
-                        [ Html.text "stop" ]
-                  , Html.button
-                        [ Events.onClick Run ]
-                        [ Html.text "run" ]
-                  , Html.button
-                        [ Events.onClick Jump ]
-                        [ Html.text "jump" ]
-                  , Html.div [] [ Html.text <| "current time: " ++ (toString model.currentTime) ]
-                  , Html.div [] [ Html.text <| "state time: " ++ (toString model.stateTime) ]
-                  ]
-                , render
-                ]
+                newState
 
 
 
 -- MAIN
 
 
-main : Program Never Model Msg
+type alias Jump =
+    Engine.GameLogic State Cmd
+
+
+jump : Jump
+jump =
+    { defaultState = defaultState
+    , execute = execute
+    , step = step
+    , draw = draw
+    }
+
+
+main : Program Never (Engine.Model State Cmd) Engine.Msg
 main =
-    Html.program
-        { init = init
-        , update = update
-        , subscriptions = subscriptions
-        , view = view
-        }
+    Engine.engine jump
