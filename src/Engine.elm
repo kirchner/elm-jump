@@ -37,6 +37,7 @@ defaultModel gameLogic =
 type alias GameLogic state cmd =
     { defaultState : state
     , execute : cmd -> state -> state
+    , bind : Keyboard.KeyCode -> Bool -> cmd
     , step : Time -> state -> state
     , draw : Time -> state -> Html cmd
     }
@@ -149,14 +150,24 @@ update msg model =
             { model | currentTime = currentTime } ! []
 
         KeyDown keycode ->
-            case keycode of
-                _ ->
-                    model ! []
+            let
+                cmd =
+                    model.gameLogic.bind keycode True
+
+                newState =
+                    model.gameLogic.execute cmd model.state
+            in
+                { model | state = newState } ! []
 
         KeyUp keycode ->
-            case keycode of
-                _ ->
-                    model ! []
+            let
+                cmd =
+                    model.gameLogic.bind keycode False
+
+                newState =
+                    model.gameLogic.execute cmd model.state
+            in
+                { model | state = newState } ! []
 
 
 
