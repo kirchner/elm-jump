@@ -215,7 +215,7 @@ view model =
                   , Html.div [] [ Html.text <| "current time: " ++ (toString model.currentTime) ]
                   , Html.div [] [ Html.text <| "state time: " ++ (toString model.stateTime) ]
                   ]
-                , [ Html.map trivialLiftrender ]
+                , [ Html.map trivialLift render ]
                 ]
 
 
