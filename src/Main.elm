@@ -20,6 +20,7 @@ module Main exposing (..)
 
 import Html exposing (Html)
 import Html.Events as Events
+import Keyboard
 import Math.Vector2
     exposing
         ( Vec2
@@ -41,6 +42,7 @@ import Engine
 
 type alias State =
     { position : Vec2
+    , movement : Maybe Direction
     , velocity : Float
     , ground : List Line
     }
@@ -49,6 +51,7 @@ type alias State =
 defaultState : State
 defaultState =
     { position = vec2 500 50
+    , movement = Nothing
     , velocity = 0
     , ground =
         [ { left = vec2 0 300
@@ -71,48 +74,112 @@ type alias Line =
 -- STEP
 
 
-step : Time -> State -> State
-step dt state =
+{-| Propagate the State by the given Time.  This includes applying
+gravity force and the movements.
+-}
+physics : Time -> State -> State
+physics dt state =
+    state
+        |> movement dt
+        |> gravity dt
+
+
+gravity : Time -> State -> State
+gravity dt state =
     let
+        acceleration =
+            0.0004
+
+        newVelocity =
+            acceleration * (Time.inMilliseconds dt) + state.velocity
+
         newPosition =
-            scale (state.velocity * Time.inMilliseconds dt) (vec2 1 0)
+            vec2 0 1
+                |> scale (newVelocity * (Time.inMilliseconds dt))
                 |> add state.position
     in
-        stepFall dt { state | position = newPosition }
+        { state
+            | velocity = newVelocity
+            , position = newPosition
+        }
 
 
-stepFall : Time -> State -> State
-stepFall dt state =
+movement : Time -> State -> State
+movement dt state =
     let
+        speed =
+            0.1
+
+        direction =
+            case state.movement of
+                Just Left ->
+                    vec2 -1 0
+
+                Just Right ->
+                    vec2 1 0
+
+                Nothing ->
+                    vec2 0 0
+
         newPosition =
-            vec2
-                (getX state.position)
-                (0.2 * (Time.inMilliseconds dt) + getY state.position)
+            direction
+                |> scale (speed * (Time.inMilliseconds dt))
+                |> add state.position
     in
-        collide state.position { state | position = newPosition }
+        { state | position = newPosition }
 
 
-collide : Vec2 -> State -> State
-collide oldPosition state =
+{-| Check for collisions and adapt the state accordingly.
+-}
+collision : Time -> State -> State -> State
+collision dt oldState newState =
     let
+        ox =
+            getX oldState.position
+
+        oy =
+            getY oldState.position
+
+        lx line =
+            getX line.left
+
+        ly line =
+            getY line.left
+
+        rx line =
+            getX line.right
+
+        ry line =
+            getY line.right
+
         iy line =
-            (getX oldPosition - getX line.left)
-                * (getY line.right - getY line.left)
-                / (getX line.right - getX line.left)
-                + getY line.left
+            (ox - lx line)
+                * (ry line - ly line)
+                / (rx line - lx line)
+                + ly line
 
         adjust line newPosition =
             if
-                ((getY oldPosition - 2) <= iy line)
+                ((oy - 2) <= iy line)
                     && ((getY newPosition + 2) > iy line)
-                    && (getX oldPosition >= (getX line.left))
-                    && (getX oldPosition <= (getX line.right))
+                    && (ox >= (lx line))
+                    && (ox <= (rx line))
             then
                 vec2 (getX newPosition) (iy line)
             else
                 newPosition
+
+        newPosition =
+            List.foldr adjust newState.position newState.ground
     in
-        { state | position = List.foldr adjust state.position state.ground }
+        { newState | position = newPosition }
+
+
+{-| Compute new State.
+-}
+step : Time -> State -> State
+step dt state =
+    collision dt state (physics dt state)
 
 
 
@@ -188,62 +255,50 @@ execute cmd state =
         NoOp ->
             state
 
-        --        KeyDown keycode ->
-        --            case keycode of
-        --                -- spacebar
-        --                32 ->
-        --                    update Jump model
-        --
-        --                -- left
-        --                37 ->
-        --                    update (Move Left) model
-        --
-        --                -- right
-        --                39 ->
-        --                    update (Move Right) model
-        --
-        --                _ ->
-        --                    model ! []
-        --
-        --        KeyUp keycode ->
-        --            case keycode of
-        --                -- left
-        --                37 ->
-        --                    update Halt model
-        --
-        --                -- right
-        --                39 ->
-        --                    update Halt model
-        --
-        --                _ ->
-        --                    model ! []
         Jump ->
-            state
+            { state | velocity = -0.3 }
 
         Move direction ->
-            let
-                newVelocity =
-                    case direction of
-                        Left ->
-                            -0.1
-
-                        Right ->
-                            0.1
-
-                newState =
-                    { state | velocity = newVelocity }
-            in
-                newState
+            { state | movement = Just direction }
 
         Halt ->
-            let
-                newVelocity =
-                    0
+            { state | movement = Nothing }
 
-                newState =
-                    { state | velocity = newVelocity }
-            in
-                newState
+
+
+-- KEYBIND
+
+
+bind : Keyboard.KeyCode -> Bool -> Cmd
+bind keycode pressed =
+    if pressed then
+        case keycode of
+            -- spacebar
+            32 ->
+                Jump
+
+            -- left
+            37 ->
+                Move Left
+
+            -- right
+            39 ->
+                Move Right
+
+            _ ->
+                NoOp
+    else
+        case keycode of
+            -- left
+            37 ->
+                Halt
+
+            -- right
+            39 ->
+                Halt
+
+            _ ->
+                NoOp
 
 
 
@@ -258,6 +313,7 @@ jump : Jump
 jump =
     { defaultState = defaultState
     , execute = execute
+    , bind = bind
     , step = step
     , draw = draw
     }
