@@ -21,7 +21,7 @@ module Main exposing (..)
 import Html exposing (Html)
 import Html.Events as Events
 import Keyboard
-import Math.Vector2
+import Math.Vector2 as Vec2
     exposing
         ( Vec2
         , add
@@ -35,6 +35,7 @@ import Svg exposing (Svg)
 import Svg.Attributes as Svg
 import Time exposing (Time)
 import Engine
+import Camera exposing (defaultCamera)
 
 
 -- STATE
@@ -45,6 +46,7 @@ type alias State =
     , movement : Maybe Direction
     , velocity : Float
     , ground : List Line
+    , tcamera : Camera.T
     }
 
 
@@ -61,6 +63,8 @@ defaultState =
           , right = vec2 600 100
           }
         ]
+    , tcamera =
+          Camera.defaultT
     }
 
 
@@ -179,7 +183,41 @@ collision dt oldState newState =
 -}
 step : Time -> State -> State
 step dt state =
-    collision dt state (physics dt state)
+    state
+    |> physics dt
+    |> collision dt state
+    |> camera dt -- TODO: currentTime
+
+
+camera : Time -> State -> State
+camera dt state =
+    let
+        currentTime =
+            state.tcamera.lastFrame + dt
+    in
+        { state
+            | tcamera =
+                Camera.step currentTime state.tcamera
+                |> Camera.retarget currentTime
+                   ( let
+                         pointOfInterest =
+                             vec2 500 150
+
+                         p =
+                             Vec2.length (Vec2.sub state.position pointOfInterest) <= 100
+                     in
+                         if p then
+                                 { defaultCamera
+                                     | position = state.position
+                                     , scale = 2.5
+                                 }
+                             else
+                                 { defaultCamera
+                                     | position = state.position
+                                     , scale = 1
+                                 }
+                   )
+        }
 
 
 
@@ -199,6 +237,7 @@ draw dt state =
             [ Svg.width "600"
             , Svg.height "400"
             , Svg.viewBox "0 0 600 400"
+            , Svg.transform (Camera.transform state.tcamera.lastCamera)
             ]
             [ Svg.rect
                 [ Svg.x <| toString x
@@ -210,6 +249,13 @@ draw dt state =
                 []
             , drawGround state
             ]
+--        |> \svg ->
+--            Html.div []
+--            [ svg
+--            , Html.div [] [ Html.text (toString state.tcamera) ]
+--            , Html.div [] [ Html.text (toString state.position) ]
+--            , Html.div [] [ Html.text (Camera.transform state.tcamera.lastCamera) ]
+--            ]
 
 
 drawGround : State -> Svg m
