@@ -312,7 +312,11 @@ draw dt state =
             ]
             ( List.concat
                   [ state.players
-                      |> List.map drawPlayer
+                      |> List.indexedMap (,)
+                      |> List.sortBy (\(i, r) ->
+                             if i == state.activePlayer then 1 else 0
+                         )
+                      |> List.map (\(i, r) -> drawPlayer r)
                       |> List.concat
                   , [ drawGround state ]
                   ]
