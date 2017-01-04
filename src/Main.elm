@@ -240,7 +240,7 @@ draw dt state =
             , Svg.transform (Camera.transform state.tcamera.lastCamera)
             ]
             [ Svg.rect
-                [ Svg.x <| toString x
+                [ Svg.x <| toString (x - 10)
                 , Svg.y <| toString (y - 20)
                 , Svg.width "20"
                 , Svg.height "20"
