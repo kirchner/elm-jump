@@ -183,6 +183,19 @@ collision : Time -> State -> State -> State
 collision dt oldState newState =
 
     let
+        lines =
+             List.concat
+                 [
+                   newState.ground
+
+                 , oldState.players
+                   |> List.map (\player ->
+                          { left = player.position |> add (vec2 (-10) (-player.height))
+                          , right = player.position |> add (vec2 10 (-player.height))
+                          }
+                      )
+                 ]
+
         players =
             newState.players
             |> List.map2 (,) oldState.players
@@ -224,7 +237,7 @@ collision dt oldState newState =
                                newPosition
  
                        newPosition =
-                           List.foldr adjust newPlayer.position newState.ground
+                           List.foldr adjust newPlayer.position lines
                    in
                        { newPlayer
                            | position = newPosition
@@ -338,8 +351,21 @@ drawGround state =
                 , Svg.stroke "brown"
                 ]
                 []
+
+        lines =
+             List.concat
+                 [
+                   state.ground
+
+                 , state.players
+                   |> List.map (\player ->
+                          { left = player.position |> add (vec2 (-10) (-player.height))
+                          , right = player.position |> add (vec2 10 (-player.height))
+                          }
+                      )
+                 ]
     in
-        Svg.g [] <| List.map drawLine state.ground
+        Svg.g [] <| List.map drawLine lines
 
 
 
