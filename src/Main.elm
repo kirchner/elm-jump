@@ -36,25 +36,24 @@ import Svg.Attributes as Svg
 import Time exposing (Time)
 import Engine
 import Camera exposing (defaultCamera)
+import Player exposing (Player, defaultPlayer)
 
 
 -- STATE
 
 
 type alias State =
-    { position : Vec2
-    , movement : Maybe Direction
-    , velocity : Float
+    { movement : Maybe Direction
     , ground : List Line
     , tcamera : Camera.T
+    , players : List Player
+    , activePlayer : Int
     }
 
 
 defaultState : State
 defaultState =
-    { position = vec2 500 50
-    , movement = Nothing
-    , velocity = 0
+    { movement = Nothing
     , ground =
         [ { left = vec2 0 300
           , right = vec2 600 400
@@ -65,6 +64,30 @@ defaultState =
         ]
     , tcamera =
           Camera.defaultT
+    , players =
+        [ { defaultPlayer
+              | position = vec2 100 100
+              , height = 20
+              , color = "#ffcc00"
+              , active = True
+          }
+        , { defaultPlayer
+              | position = vec2 200 100
+              , height = 60
+              , color = "#d400aa"
+          }
+        , { defaultPlayer
+              | position = vec2 300 100
+              , height = 40
+              , color = "#0066ff"
+          }
+        , { defaultPlayer
+              | position = vec2 400 100
+              , height = 40
+              , color = "#00d400"
+          }
+        ]
+    , activePlayer = 0
     }
 
 
@@ -94,17 +117,26 @@ gravity dt state =
         acceleration =
             0.0004
 
-        newVelocity =
-            acceleration * (Time.inMilliseconds dt) + state.velocity
+        players =
+            state.players
+            |> List.map (\player ->
+                let
+                    newVelocity =
+                        acceleration * (Time.inMilliseconds dt) + player.velocity
 
-        newPosition =
-            vec2 0 1
-                |> scale (newVelocity * (Time.inMilliseconds dt))
-                |> add state.position
+                    newPosition =
+                        vec2 0 1
+                            |> scale (newVelocity * (Time.inMilliseconds dt))
+                            |> add player.position
+                in
+                    { player
+                        | position = newPosition
+                        , velocity = newVelocity
+                    }
+               )
     in
         { state
-            | velocity = newVelocity
-            , position = newPosition
+            | players = players
         }
 
 
@@ -125,58 +157,81 @@ movement dt state =
                 Nothing ->
                     vec2 0 0
 
-        newPosition =
-            direction
-                |> scale (speed * (Time.inMilliseconds dt))
-                |> add state.position
+        players =
+          state.players
+          |> List.indexedMap (\i player ->
+                 if i == state.activePlayer then
+                        let
+                            newPosition =
+                                direction
+                                    |> scale (speed * (Time.inMilliseconds dt))
+                                    |> add player.position
+                         in
+                             { player
+                                 | position = newPosition
+                             }
+                     else
+                         player
+             )
     in
-        { state | position = newPosition }
+        { state | players = players }
 
 
 {-| Check for collisions and adapt the state accordingly.
 -}
 collision : Time -> State -> State -> State
 collision dt oldState newState =
+
     let
-        ox =
-            getX oldState.position
-
-        oy =
-            getY oldState.position
-
-        lx line =
-            getX line.left
-
-        ly line =
-            getY line.left
-
-        rx line =
-            getX line.right
-
-        ry line =
-            getY line.right
-
-        iy line =
-            (ox - lx line)
-                * (ry line - ly line)
-                / (rx line - lx line)
-                + ly line
-
-        adjust line newPosition =
-            if
-                ((oy - 2) <= iy line)
-                    && ((getY newPosition + 2) > iy line)
-                    && (ox >= (lx line))
-                    && (ox <= (rx line))
-            then
-                vec2 (getX newPosition) (iy line)
-            else
-                newPosition
-
-        newPosition =
-            List.foldr adjust newState.position newState.ground
+        players =
+            newState.players
+            |> List.map2 (,) oldState.players
+            |> List.map (\(oldPlayer, newPlayer) ->
+                   let
+                       ox =
+                           getX oldPlayer.position
+ 
+                       oy =
+                           getY oldPlayer.position
+ 
+                       lx line =
+                           getX line.left
+ 
+                       ly line =
+                           getY line.left
+ 
+                       rx line =
+                           getX line.right
+ 
+                       ry line =
+                           getY line.right
+ 
+                       iy line =
+                           (ox - lx line)
+                               * (ry line - ly line)
+                               / (rx line - lx line)
+                               + ly line
+ 
+                       adjust line newPosition =
+                           if
+                               ((oy - 2) <= iy line)
+                                   && ((getY newPosition + 2) > iy line)
+                                   && (ox >= (lx line))
+                                   && (ox <= (rx line))
+                           then
+                               vec2 (getX newPosition) (iy line)
+                           else
+                               newPosition
+ 
+                       newPosition =
+                           List.foldr adjust newPlayer.position newState.ground
+                   in
+                       { newPlayer
+                           | position = newPosition
+                       }
+               )
     in
-        { newState | position = newPosition }
+        { newState | players = players }
 
 
 {-| Compute new State.
@@ -194,6 +249,12 @@ camera dt state =
     let
         currentTime =
             state.tcamera.lastFrame + dt
+
+        player =
+            state.players
+            |> List.drop state.activePlayer
+            |> List.head
+            |> Maybe.withDefault defaultPlayer
     in
         { state
             | tcamera =
@@ -204,16 +265,16 @@ camera dt state =
                              vec2 500 150
 
                          p =
-                             Vec2.length (Vec2.sub state.position pointOfInterest) <= 100
+                             Vec2.length (Vec2.sub player.position pointOfInterest) <= 100
                      in
                          if p then
                                  { defaultCamera
-                                     | position = state.position
+                                     | position = player.position
                                      , scale = 2.5
                                  }
                              else
                                  { defaultCamera
-                                     | position = state.position
+                                     | position = player.position
                                      , scale = 1
                                  }
                    )
@@ -229,9 +290,6 @@ draw dt state =
     let
         newState =
             step dt state
-
-        ( x, y ) =
-            toTuple newState.position
     in
         Svg.svg
             [ Svg.width "600"
@@ -239,16 +297,13 @@ draw dt state =
             , Svg.viewBox "0 0 600 400"
             , Svg.transform (Camera.transform state.tcamera.lastCamera)
             ]
-            [ Svg.rect
-                [ Svg.x <| toString (x - 10)
-                , Svg.y <| toString (y - 20)
-                , Svg.width "20"
-                , Svg.height "20"
-                , Svg.fill "green"
-                ]
-                []
-            , drawGround state
-            ]
+            ( List.concat
+                  [ state.players
+                      |> List.map drawPlayer
+                      |> List.concat
+                  , [ drawGround state ]
+                  ]
+            )
 --        |> \svg ->
 --            Html.div []
 --            [ svg
@@ -257,6 +312,18 @@ draw dt state =
 --            , Html.div [] [ Html.text (Camera.transform state.tcamera.lastCamera) ]
 --            ]
 
+
+drawPlayer : Player -> List (Svg m)
+drawPlayer player =
+    [ Svg.rect
+        [ Svg.x <| toString (getX player.position - 10)
+        , Svg.y <| toString (getY player.position - player.height)
+        , Svg.width "20"
+        , Svg.height (player.height |> toString)
+        , Svg.fill player.color
+        ]
+        []
+    ]
 
 drawGround : State -> Svg m
 drawGround state =
@@ -284,6 +351,7 @@ type Cmd
     | Jump
     | Move Direction
     | Halt
+    | Cycle
 
 
 type Direction
@@ -302,13 +370,33 @@ execute cmd state =
             state
 
         Jump ->
-            { state | velocity = -0.3 }
+            let
+                players =
+                    state.players
+                    |> List.indexedMap (\i player ->
+                           if i == state.activePlayer then
+                                   { player | velocity = -0.3 }
+                               else
+                                   player
+                       )
+            in
+                { state | players = players }
 
         Move direction ->
             { state | movement = Just direction }
 
         Halt ->
             { state | movement = Nothing }
+
+        Cycle ->
+            let
+                activePlayer =
+                    state.activePlayer + 1
+                    |> flip (%) (List.length state.players)
+            in
+                { state
+                    | activePlayer = activePlayer
+                }
 
 
 
@@ -330,6 +418,10 @@ bind keycode pressed =
             -- right
             39 ->
                 Move Right
+
+            -- tab
+            9 ->
+                Cycle
 
             _ ->
                 NoOp
