@@ -40,21 +40,6 @@ defaultT =
   }
 
 
-evaluate : Time -> T -> Camera
-evaluate currentTime tcamera =
-
-    case tcamera.target of
-        Just (futureTime, futureCamera) ->
-            let
-                t =
-                    (currentTime - tcamera.lastFrame) / tcamera.duration
-            in
-                lerp t tcamera.lastCamera futureCamera
-
-        Nothing ->
-            tcamera.lastCamera
-
-
 step : Time -> T -> T
 step currentTime tcamera =
     case tcamera.target of
