@@ -1,11 +1,13 @@
 module Engine exposing (..)
 
 import AnimationFrame
-import Html exposing (Html)
 import Html.Events as Events
+import Html exposing (Html)
 import Keyboard
+import Mouse
 import Task
 import Time exposing (Time)
+import Math.Vector2 exposing (Vec2, vec2)
 
 
 -- MODEL
@@ -17,6 +19,7 @@ type alias Model state cmd =
     , stateTime : Time
     , currentTime : Time
     , paused : Bool
+    , cursor : Vec2
     }
 
 
@@ -27,6 +30,7 @@ defaultModel gameLogic =
     , stateTime = 0 * Time.millisecond
     , paused = True
     , currentTime = 0 * Time.millisecond
+    , cursor = vec2 0 0
     }
 
 
@@ -59,6 +63,7 @@ type Msg
     | Redraw Time
     | KeyDown Keyboard.KeyCode
     | KeyUp Keyboard.KeyCode
+    | Mouse Mouse.Position
 
 
 trivialLift : cmd -> Msg
@@ -169,6 +174,13 @@ update msg model =
             in
                 { model | state = newState } ! []
 
+        Mouse position ->
+            let
+                cursor =
+                    vec2 (position.x |> toFloat) (position.y |> toFloat)
+            in
+                { model | cursor = cursor } ! []
+
 
 
 -- SUBSCRIPTIONS
@@ -193,12 +205,16 @@ subscriptions model =
 
         keyUps =
             Keyboard.ups KeyUp
+
+        mouse =
+            Mouse.moves Mouse
     in
         Sub.batch
             --            [ tick
             [ redraw
             , keyDowns
             , keyUps
+            , mouse
             ]
 
 
@@ -225,6 +241,7 @@ view model =
                         [ Html.text "run" ]
                   , Html.div [] [ Html.text <| "current time: " ++ (toString model.currentTime) ]
                   , Html.div [] [ Html.text <| "state time: " ++ (toString model.stateTime) ]
+                  , Html.div [] [ Html.text <| "mouse position: " ++ toString model.cursor ]
                   ]
                 , [ Html.map trivialLift render ]
                 ]
