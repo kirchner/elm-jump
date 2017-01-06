@@ -40,6 +40,7 @@ import Player exposing (Player, defaultPlayer)
 import Http
 import Json.Decode as Json
 import Platform.Cmd as Cmd
+import Task
 
 
 -- STATE
@@ -547,7 +548,11 @@ jump =
 
 
 init =
-    (defaultState, Cmd.none)
+    let
+        pure x =
+            Task.perform (always x) (Task.succeed ())
+    in
+        (defaultState, Load "level0.json" |> pure)
 
 
 main : Program Never (Engine.Model State Cmd) (Engine.Msg Cmd)
