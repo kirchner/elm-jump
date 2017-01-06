@@ -37,6 +37,9 @@ import Time exposing (Time)
 import Engine
 import Camera exposing (defaultCamera)
 import Player exposing (Player, defaultPlayer)
+import Http
+import Json.Decode as Json
+import Platform.Cmd as Cmd
 
 
 -- STATE
@@ -55,13 +58,25 @@ defaultState : State
 defaultState =
     { movement = Nothing
     , ground =
-        [ { left = vec2 0 300
-          , right = vec2 600 400
-          }
-        , { left = vec2 400 200
-          , right = vec2 600 100
-          }
-        ]
+          let
+              parse1 xs =
+                  case xs of
+                      (x::y::xs_) ->
+                          vec2 (10*x) (-10*y + 500) :: parse1 xs_
+                      _ ->
+                          []
+
+              parse2 xs =
+                  case xs of
+                      (u::v::xs_) ->
+                          { left = u, right = v } :: parse2 (v::xs_)
+                      _ ->
+                          []
+
+              parse =
+                  parse1 >> parse2
+          in
+              parse [0.0, 0.0, 2.3069236278533936, 8.262032508850098, 8.028361320495605, 15.044477462768555, 16.468671798706055, 20.340553283691406, 26.932214736938477, 24.143482208251953, 38.723350524902344, 26.446483612060547, 51.14643859863281, 27.24277687072754, 63.505836486816406, 26.525583267211914, 75.10590362548828, 24.288122177124023, 85.2509994506836, 20.52361297607422, 93.2454833984375, 15.225276947021484, 98.39371490478516, 8.386334419250488, 100.0, 0.0, 0 ]
     , tcamera =
         Camera.defaultT
     , players =
@@ -303,7 +318,7 @@ camera dt state =
 -- DRAW
 
 
-draw : Time -> State -> Html m
+draw : Time -> State -> Html Cmd
 draw dt state =
     let
         newState =
@@ -330,16 +345,12 @@ draw dt state =
                 , [ drawGround state ]
                 ]
             )
-
-
-
---        |> \svg ->
---            Html.div []
---            [ svg
---            , Html.div [] [ Html.text (toString state.tcamera) ]
---            , Html.div [] [ Html.text (toString state.position) ]
---            , Html.div [] [ Html.text (Camera.transform state.tcamera.lastCamera) ]
---            ]
+        |> \svg ->
+            Html.div []
+            [ svg
+            , Html.button [ Events.onClick (Load "level0.json") ] [ Html.text "level 0" ]
+            , Html.button [ Events.onClick (Load "level1.json") ] [ Html.text "level 1" ]
+            ]
 
 
 drawPlayer : Player -> List (Svg m)
@@ -394,6 +405,8 @@ type Cmd
     | Move Direction
     | Halt
     | Cycle
+    | Load String
+    | LoadOk (Result Http.Error (List Line))
 
 
 type Direction
@@ -405,11 +418,11 @@ type Direction
 -- EXECUTE
 
 
-execute : Cmd -> State -> State
+execute : Cmd -> State -> (State, Cmd.Cmd Cmd)
 execute cmd state =
     case cmd of
         NoOp ->
-            state
+            state ! []
 
         Jump ->
             let
@@ -423,13 +436,13 @@ execute cmd state =
                                     player
                             )
             in
-                { state | players = players }
+                { state | players = players } ! []
 
         Move direction ->
-            { state | movement = Just direction }
+            { state | movement = Just direction } ! []
 
         Halt ->
-            { state | movement = Nothing }
+            { state | movement = Nothing } ! []
 
         Cycle ->
             let
@@ -440,7 +453,38 @@ execute cmd state =
             in
                 { state
                     | activePlayer = activePlayer
-                }
+                } ! []
+
+        Load fn ->
+            let
+                parse1 xs =
+                    case xs of
+                        (x::y::xs_) ->
+                            vec2 (10*x) (-10*y + 500) :: parse1 xs_
+                        _ ->
+                            []
+
+                parse2 xs =
+                    case xs of
+                        (u::v::xs_) ->
+                            { left = u, right = v } :: parse2 (v::xs_)
+                        _ ->
+                            []
+
+                parse =
+                    List.map parse1 >> List.map parse2 >> List.concat
+
+                decodeLevel =
+                  Json.list (Json.list (Json.float)) |> Json.map parse
+            in
+                state !  [ Http.get fn decodeLevel |> Http.send LoadOk ]
+
+        LoadOk (Ok ground) ->
+            { state | ground = ground
+            } ! []
+
+        LoadOk (Err _) ->
+            state ! []
 
 
 
@@ -498,9 +542,14 @@ jump =
     , bind = bind
     , step = step
     , draw = draw
+    , init = init
     }
 
 
-main : Program Never (Engine.Model State Cmd) Engine.Msg
+init =
+    (defaultState, Cmd.none)
+
+
+main : Program Never (Engine.Model State Cmd) (Engine.Msg Cmd)
 main =
     Engine.engine jump
