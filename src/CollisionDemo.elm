@@ -27,7 +27,9 @@ import Math.Vector2 as Vec2
         , add
         , getX
         , getY
+        , length
         , scale
+        , sub
         , toTuple
         , vec2
         )
@@ -69,6 +71,7 @@ defaultState =
         [ { defaultPlayer
             | position = vec2 300 0
             , height = 20
+            , rotation = -1 * pi / 5
             , color = "#ffcc00"
             , active = True
           }
@@ -107,22 +110,32 @@ gravity dt state =
             state.players
                 |> List.map
                     (\player ->
-                        let
-                            newVelocity =
-                                acceleration * (Time.inMilliseconds dt) + player.velocity
+                        if List.isEmpty player.resting then
+                            let
+                                newVelocity =
+                                    acceleration * (Time.inMilliseconds dt) + player.velocity
 
-                            newPosition =
-                                if player.falling then
+                                newPosition =
                                     vec2 0 1
                                         |> scale (newVelocity * (Time.inMilliseconds dt))
                                         |> add player.position
-                                else
+                            in
+                                { player
+                                    | position = newPosition
+                                    , velocity = newVelocity
+                                }
+                        else
+                            let
+                                newVelocity =
+                                    0
+
+                                newPosition =
                                     player.position
-                        in
-                            { player
-                                | position = newPosition
-                                , velocity = newVelocity
-                            }
+                            in
+                                { player
+                                    | position = newPosition
+                                    , velocity = newVelocity
+                                }
                     )
     in
         { state
@@ -205,34 +218,84 @@ collision dt oldState newState =
                 |> List.map
                     (\( oldPlayer, newPlayer ) ->
                         let
-                            translation newPosition =
-                                { a = oldPlayer.position
-                                , b = newPosition
-                                }
+                            translation =
+                                sub newPlayer.position oldPlayer.position
 
-                            lineSegment line =
-                                { a = line.left
-                                , b = line.right
-                                }
+                            ( actualTranslation, newRestingCorner ) =
+                                collisionOfPlayer oldPlayer translation lines
 
-                            adjust line ( newPosition, newFalling ) =
-                                case intersection (translation newPosition) (lineSegment line) of
-                                    Just i ->
-                                        Debug.log "intersection" ( i, False )
+                            newPosition =
+                                add oldPlayer.position actualTranslation
+
+                            newResting =
+                                case newRestingCorner of
+                                    Just corner ->
+                                        corner :: newPlayer.resting
 
                                     Nothing ->
-                                        ( newPosition, newFalling )
-
-                            ( newPosition, newFalling ) =
-                                List.foldr adjust ( newPlayer.position, newPlayer.falling ) lines
+                                        newPlayer.resting
                         in
                             { newPlayer
                                 | position = newPosition
-                                , falling = newFalling
+                                , resting = newResting
                             }
                     )
     in
         { newState | players = players }
+
+
+{-| Adjust the translation of the player taking into account collision
+of its corners with the lines.  Returns the decreased translation vector
+and the resting corner.
+-}
+collisionOfPlayer : Player -> Vec2 -> List Line -> ( Vec2, Maybe Corner )
+collisionOfPlayer player oldTranslation lines =
+    let
+        translationUntilLine corner line translation =
+            let
+                cornerPosition =
+                    computePosition corner player
+
+                translationLine =
+                    { a = cornerPosition
+                    , b = add cornerPosition translation
+                    }
+
+                lineSegment line =
+                    { a = line.left
+                    , b = line.right
+                    }
+            in
+                case intersection translationLine (lineSegment line) of
+                    Just i ->
+                        Debug.log "intersection" <|
+                            sub i cornerPosition
+
+                    Nothing ->
+                        translation
+
+        newTranslation corner =
+            List.foldr (translationUntilLine corner) oldTranslation lines
+
+        ( smallestTranslation, corner ) =
+            -- TODO: there is no real default here, since this case
+            -- should never happen
+            Maybe.withDefault ( oldTranslation, A ) <|
+                List.head <|
+                    List.sortBy (length << Tuple.first)
+                        [ ( newTranslation A, A )
+                        , ( newTranslation B, B )
+                        , ( newTranslation C, C )
+                        , ( newTranslation D, D )
+                        ]
+
+        restingCorner =
+            if smallestTranslation == oldTranslation then
+                Nothing
+            else
+                Just corner
+    in
+        ( smallestTranslation, restingCorner )
 
 
 {-| Compute new State.

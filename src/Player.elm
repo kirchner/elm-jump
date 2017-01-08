@@ -14,7 +14,7 @@ type alias Player =
     , velocity : Float
     , color : String
     , active : Bool
-    , falling : Bool
+    , resting : List Corner
     }
 
 
@@ -27,7 +27,7 @@ defaultPlayer =
     , velocity = 0
     , color = "#000"
     , active = False
-    , falling = True
+    , resting = []
     }
 
 
