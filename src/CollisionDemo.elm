@@ -281,10 +281,10 @@ collisionOfPlayer oldPlayer newPlayer lines =
         newResting =
             case possibleResting of
                 Just ( lineSegment, corner ) ->
-                    Dict.insert corner lineSegment newPlayer.resting
+                    Dict.insert corner lineSegment oldPlayer.resting
 
                 Nothing ->
-                    newPlayer.resting
+                    oldPlayer.resting
 
         newVelocity =
             if Dict.isEmpty newResting then

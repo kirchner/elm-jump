@@ -229,7 +229,7 @@ subscriptions model =
             [ redraw
             , keyDowns
             , keyUps
-            , mouse
+              --, mouse
             ]
 
 
