@@ -1,5 +1,6 @@
 module Player exposing (..)
 
+import Dict exposing (Dict)
 import Math.Vector2 exposing (..)
 
 
@@ -14,7 +15,7 @@ type alias Player =
     , velocity : Float
     , color : String
     , active : Bool
-    , resting : List Corner
+    , resting : Dict Int LineSegment
     }
 
 
@@ -27,7 +28,7 @@ defaultPlayer =
     , velocity = 0
     , color = "#000"
     , active = False
-    , resting = []
+    , resting = Dict.empty
     }
 
 
@@ -131,6 +132,50 @@ type alias LineSegment =
     { a : Vec2
     , b : Vec2
     }
+
+
+type alias InfiniteLine =
+    { anchor : Vec2
+    , direction : Vec2
+    }
+
+
+intersectionInfiniteLineLineSegment : InfiniteLine -> LineSegment -> Maybe Vec2
+intersectionInfiniteLineLineSegment infiniteLine lineSegment =
+    let
+        v =
+            infiniteLine.direction
+
+        w =
+            sub lineSegment.b lineSegment.a
+
+        d =
+            sub lineSegment.a infiniteLine.anchor
+
+        n =
+            crossProduct v w
+    in
+        if n == 0 then
+            Nothing
+        else
+            let
+                s =
+                    Debug.log "s" <|
+                        crossProduct d v
+                            / crossProduct v w
+
+                t =
+                    Debug.log "t" <|
+                        crossProduct d w
+                            / crossProduct v w
+
+                between a b z =
+                    (z > a) && (z < b)
+            in
+                if (t |> between 0 1) then
+                    Just (add infiniteLine.anchor (scale s v))
+                else
+                    Nothing
 
 
 intersection : LineSegment -> LineSegment -> Maybe Vec2

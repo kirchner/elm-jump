@@ -40,11 +40,11 @@ defaultModel gameLogic initState =
 
 type alias GameLogic state cmd =
     { defaultState : state
-    , execute : cmd -> state -> (state, Cmd cmd)
+    , execute : cmd -> state -> ( state, Cmd cmd )
     , bind : Keyboard.KeyCode -> Bool -> cmd
     , step : Time -> state -> state
     , draw : Time -> state -> Html cmd
-    , init : (state, Cmd cmd)
+    , init : ( state, Cmd cmd )
     }
 
 
@@ -80,15 +80,16 @@ trivialLift msg =
 init : GameLogic state cmd -> ( Model state cmd, Cmd (Msg cmd) )
 init gameLogic =
     let
-        (initState, initCmd) = gameLogic.init
+        ( initState, initCmd ) =
+            gameLogic.init
     in
-    ( defaultModel gameLogic initState
-    , Cmd.batch
-        [ Task.perform Init Time.now
-        , Task.perform Redraw Time.now
-        , initCmd |> Cmd.map Async
-        ]
-    )
+        ( defaultModel gameLogic initState
+        , Cmd.batch
+            [ Task.perform Init Time.now
+            , Task.perform Redraw Time.now
+            , initCmd |> Cmd.map Async
+            ]
+        )
 
 
 
@@ -165,7 +166,7 @@ update msg model =
                 cmd =
                     model.gameLogic.bind keycode True
 
-                (newState, newCmd) =
+                ( newState, newCmd ) =
                     model.gameLogic.execute cmd model.state
             in
                 { model | state = newState } ! [ newCmd |> Cmd.map Async ]
@@ -175,7 +176,7 @@ update msg model =
                 cmd =
                     model.gameLogic.bind keycode False
 
-                (newState, newCmd) =
+                ( newState, newCmd ) =
                     model.gameLogic.execute cmd model.state
             in
                 { model | state = newState } ! [ newCmd |> Cmd.map Async ]
@@ -189,10 +190,11 @@ update msg model =
 
         Async cmd ->
             let
-                (newState, newCmd) =
+                ( newState, newCmd ) =
                     model.gameLogic.execute cmd model.state
             in
                 { model | state = newState } ! [ newCmd |> Cmd.map Async ]
+
 
 
 -- SUBSCRIPTIONS
@@ -210,7 +212,8 @@ subscriptions model =
             if model.paused then
                 Sub.none
             else
-                AnimationFrame.times Tick
+                --AnimationFrame.times Tick
+                Time.every (100 * Time.millisecond) Tick
 
         keyDowns =
             Keyboard.downs KeyDown

@@ -18,6 +18,7 @@
 
 module Main exposing (..)
 
+import Dict
 import Html exposing (Html)
 import Html.Events as Events
 import Keyboard
@@ -90,61 +91,10 @@ type alias Line =
 -- STEP
 
 
-{-| Propagate the State by the given Time.  This includes applying
-gravity force and the movements.
+{-| Translate and rotate the player in the given direction.
 -}
-physics : Time -> State -> State
-physics dt state =
-    state
-        |> movement dt
-        |> gravity dt
-
-
-gravity : Time -> State -> State
-gravity dt state =
-    let
-        acceleration =
-            0.0004
-
-        players =
-            state.players
-                |> List.map
-                    (\player ->
-                        if List.isEmpty player.resting then
-                            let
-                                newVelocity =
-                                    acceleration * (Time.inMilliseconds dt) + player.velocity
-
-                                newPosition =
-                                    vec2 0 1
-                                        |> scale (newVelocity * (Time.inMilliseconds dt))
-                                        |> add player.position
-                            in
-                                { player
-                                    | position = newPosition
-                                    , velocity = newVelocity
-                                }
-                        else
-                            let
-                                newVelocity =
-                                    0
-
-                                newPosition =
-                                    player.position
-                            in
-                                { player
-                                    | position = newPosition
-                                    , velocity = newVelocity
-                                }
-                    )
-    in
-        { state
-            | players = players
-        }
-
-
-movement : Time -> State -> State
-movement dt state =
+movementOfPlayer : Time -> Maybe Direction -> Player -> Player
+movementOfPlayer dt movement player =
     let
         speed =
             0.1
@@ -152,109 +102,140 @@ movement dt state =
         rotationSpeed =
             0.001
 
-        direction =
-            case state.movement of
+        directionVector =
+            case movement of
                 Just Left ->
-                    -1
+                    vec2 -1 0
 
                 Just Right ->
-                    1
+                    vec2 1 0
 
                 Nothing ->
-                    0
+                    vec2 0 0
 
-        directionVector =
-            vec2 direction 0
+        translation =
+            directionVector
+                |> scale (speed * (Time.inMilliseconds dt))
 
-        players =
-            state.players
-                |> List.indexedMap
-                    (\i player ->
-                        if i == state.activePlayer then
-                            let
-                                newPosition =
-                                    directionVector
-                                        |> scale (speed * (Time.inMilliseconds dt))
-                                        |> add player.position
+        actualTranslation =
+            Maybe.withDefault translation <|
+                List.head <|
+                    Debug.log "ascension" <|
+                        List.sortWith compareY <|
+                            List.map (adjustTranslation translation) <|
+                                Dict.toList player.resting
 
-                                newRotation =
-                                    -- TODO: check if player is falling
-                                    if player.velocity > 0 then
-                                        player.rotation - direction * (Time.inMilliseconds dt) * rotationSpeed
-                                    else
-                                        player.rotation
-                            in
-                                { player
-                                    | position = newPosition
-                                    , rotation = newRotation
-                                }
-                        else
-                            player
-                    )
+        compareY v w =
+            if (getY v) < (getY w) then
+                LT
+            else if (getY v) > (getY w) then
+                GT
+            else
+                EQ
+
+        adjustTranslation translation ( cornerIndex, lineSegment ) =
+            let
+                _ =
+                    Debug.log "adjusted translation"
+
+                corner =
+                    case cornerIndex of
+                        0 ->
+                            A
+
+                        1 ->
+                            B
+
+                        2 ->
+                            C
+
+                        3 ->
+                            D
+
+                        _ ->
+                            A
+
+                cornerPosition =
+                    computePosition corner player
+
+                newTranslation =
+                    case
+                        intersectionInfiniteLineLineSegment
+                            { anchor = add cornerPosition translation
+                            , direction = vec2 0 1
+                            }
+                            lineSegment
+                    of
+                        Just intersection ->
+                            sub intersection cornerPosition
+
+                        Nothing ->
+                            translation
+            in
+                newTranslation
+
+        rotation =
+            if Dict.isEmpty player.resting then
+                case movement of
+                    Just Left ->
+                        (Time.inMilliseconds dt) * rotationSpeed
+
+                    Just Right ->
+                        -1 * (Time.inMilliseconds dt) * rotationSpeed
+
+                    Nothing ->
+                        0
+            else
+                0
     in
-        { state | players = players }
+        { player
+            | position = add player.position actualTranslation
+            , rotation = player.rotation + rotation
+        }
 
 
-{-| Check for collisions and adapt the state accordingly.
+{-| Apply gravitational force onto player.
 -}
-collision : Time -> State -> State -> State
-collision dt oldState newState =
+gravityOfPlayer : Time -> Player -> Player
+gravityOfPlayer dt player =
     let
-        lines =
-            List.concat
-                [ newState.ground
-                , oldState.players
-                    |> List.map
-                        (\player ->
-                            { left = player.position |> add (vec2 (-10) (-player.height))
-                            , right = player.position |> add (vec2 10 (-player.height))
-                            }
-                        )
-                ]
+        acceleration =
+            0.0004
 
-        players =
-            newState.players
-                |> List.map2 (,) oldState.players
-                |> List.map
-                    (\( oldPlayer, newPlayer ) ->
-                        let
-                            translation =
-                                sub newPlayer.position oldPlayer.position
+        newVelocity =
+            if Dict.isEmpty player.resting then
+                acceleration * (Time.inMilliseconds dt) + player.velocity
+            else
+                --TODO: rotate player
+                player.velocity
 
-                            ( actualTranslation, newRestingCorner ) =
-                                collisionOfPlayer oldPlayer translation lines
-
-                            newPosition =
-                                add oldPlayer.position actualTranslation
-
-                            newResting =
-                                case newRestingCorner of
-                                    Just corner ->
-                                        corner :: newPlayer.resting
-
-                                    Nothing ->
-                                        newPlayer.resting
-                        in
-                            { newPlayer
-                                | position = newPosition
-                                , resting = newResting
-                            }
-                    )
+        newPosition =
+            vec2 0 1
+                |> scale (newVelocity * (Time.inMilliseconds dt))
+                |> add player.position
     in
-        { newState | players = players }
+        { player
+            | position = newPosition
+            , velocity = newVelocity
+        }
 
 
 {-| Adjust the translation of the player taking into account collision
 of its corners with the lines.  Returns the decreased translation vector
 and the resting corner.
+
+TODO: also take into account the additional rotation
 -}
-collisionOfPlayer : Player -> Vec2 -> List Line -> ( Vec2, Maybe Corner )
-collisionOfPlayer player oldTranslation lines =
+collisionOfPlayer : Player -> Player -> List Line -> Player
+collisionOfPlayer oldPlayer newPlayer lines =
     let
-        translationUntilLine corner line translation =
+        oldTranslation =
+            sub newPlayer.position oldPlayer.position
+
+        cropTranslationOfCorner corner line ( translation, restingLineSegment ) =
             let
                 cornerPosition =
-                    computePosition corner player
+                    computePosition corner oldPlayer
 
                 translationLine =
                     { a = cornerPosition
@@ -268,34 +249,87 @@ collisionOfPlayer player oldTranslation lines =
             in
                 case intersection translationLine (lineSegment line) of
                     Just i ->
-                        Debug.log "intersection" <|
-                            sub i cornerPosition
+                        ( sub i cornerPosition, Just (lineSegment line) )
 
                     Nothing ->
-                        translation
+                        ( translation, restingLineSegment )
 
-        newTranslation corner =
-            List.foldr (translationUntilLine corner) oldTranslation lines
+        newTranslationOfCorner corner =
+            List.foldr (cropTranslationOfCorner corner) ( oldTranslation, Nothing ) lines
 
-        ( smallestTranslation, corner ) =
-            -- TODO: there is no real default here, since this case
-            -- should never happen
-            Maybe.withDefault ( oldTranslation, A ) <|
+        ( smallestTranslation, possibleResting ) =
+            Maybe.withDefault ( vec2 0 0, Nothing ) <|
                 List.head <|
-                    List.sortBy (length << Tuple.first)
-                        [ ( newTranslation A, A )
-                        , ( newTranslation B, B )
-                        , ( newTranslation C, C )
-                        , ( newTranslation D, D )
-                        ]
+                    let
+                        format ( ( translation, restingLineSegment ), corner ) =
+                            case restingLineSegment of
+                                Just lineSegment ->
+                                    ( translation, Just ( lineSegment, corner ) )
 
-        restingCorner =
-            if smallestTranslation == oldTranslation then
-                Nothing
+                                Nothing ->
+                                    ( translation, Nothing )
+                    in
+                        List.map format <|
+                            List.sortBy
+                                (length << Tuple.first << Tuple.first)
+                                [ ( newTranslationOfCorner A, 0 )
+                                , ( newTranslationOfCorner B, 1 )
+                                , ( newTranslationOfCorner C, 2 )
+                                , ( newTranslationOfCorner D, 3 )
+                                ]
+
+        newResting =
+            case possibleResting of
+                Just ( lineSegment, corner ) ->
+                    Dict.insert corner lineSegment newPlayer.resting
+
+                Nothing ->
+                    newPlayer.resting
+
+        newVelocity =
+            if Dict.isEmpty newResting then
+                newPlayer.velocity
             else
-                Just corner
+                0
     in
-        ( smallestTranslation, restingCorner )
+        { newPlayer
+            | position = add oldPlayer.position smallestTranslation
+            , resting = newResting
+            , velocity = newVelocity
+        }
+
+
+stepPlayers : Time -> State -> State
+stepPlayers dt state =
+    let
+        newPlayers =
+            state.players
+                |> List.map (stepPlayer dt state)
+    in
+        { state
+            | players = newPlayers
+        }
+
+
+stepPlayer : Time -> State -> Player -> Player
+stepPlayer dt state player =
+    let
+        newPlayer =
+            gravityOfPlayer dt <| movementOfPlayer dt state.movement player
+
+        lines =
+            List.concat
+                [ state.ground
+                  --, state.players
+                  --    |> List.map
+                  --        (\player ->
+                  --            { left = player.position |> add (vec2 (-10) (-player.height))
+                  --            , right = player.position |> add (vec2 10 (-player.height))
+                  --            }
+                  --        )
+                ]
+    in
+        collisionOfPlayer player newPlayer lines
 
 
 {-| Compute new State.
@@ -303,13 +337,8 @@ collisionOfPlayer player oldTranslation lines =
 step : Time -> State -> State
 step dt state =
     state
-        |> physics dt
-        |> collision dt state
+        |> stepPlayers dt
         |> camera dt
-
-
-
--- TODO: currentTime
 
 
 camera : Time -> State -> State
@@ -494,7 +523,10 @@ execute cmd state =
                         |> List.indexedMap
                             (\i player ->
                                 if i == state.activePlayer then
-                                    { player | velocity = -0.3 }
+                                    { player
+                                        | velocity = -0.3
+                                        , resting = Dict.empty
+                                    }
                                 else
                                     player
                             )
