@@ -160,14 +160,10 @@ intersectionInfiniteLineLineSegment infiniteLine lineSegment =
         else
             let
                 s =
-                    Debug.log "s" <|
-                        crossProduct d v
-                            / crossProduct v w
+                    crossProduct d w / crossProduct v w
 
                 t =
-                    Debug.log "t" <|
-                        crossProduct d w
-                            / crossProduct v w
+                    crossProduct d v / crossProduct v w
 
                 between a b z =
                     (z > a) && (z < b)
@@ -198,15 +194,15 @@ intersection l1 l2 =
         else
             let
                 s =
-                    crossProduct d v / crossProduct v w
-
-                t =
                     crossProduct d w / crossProduct v w
 
+                t =
+                    crossProduct d v / crossProduct v w
+
                 between a b z =
-                    (z > a) && (z < b)
+                    (z >= a) && (z <= b)
             in
-                if (s |> between 0 1) && (t |> between 0 1) then
+                if (between 0 1 s) && (between 0 1 t) then
                     Just (add l1.a (scale s v))
                 else
                     Nothing

@@ -72,7 +72,7 @@ defaultState =
         [ { defaultPlayer
             | position = vec2 300 0
             , height = 20
-            , rotation = -1 * pi / 5
+            , rotation = -1 * pi / 4
             , color = "#ffcc00"
             , active = True
           }
@@ -194,6 +194,11 @@ movementOfPlayer dt movement player =
         }
 
 
+round : Vec2 -> Vec2
+round v =
+    vec2 (toFloat <| ceiling <| getX v) (toFloat <| ceiling <| getY v)
+
+
 {-| Apply gravitational force onto player.
 -}
 gravityOfPlayer : Time -> Player -> Player
@@ -206,13 +211,15 @@ gravityOfPlayer dt player =
             if Dict.isEmpty player.resting then
                 acceleration * (Time.inMilliseconds dt) + player.velocity
             else
-                --TODO: rotate player
                 player.velocity
 
         newPosition =
-            vec2 0 1
-                |> scale (newVelocity * (Time.inMilliseconds dt))
-                |> add player.position
+            if Dict.isEmpty player.resting then
+                vec2 0 1
+                    |> scale (newVelocity * (Time.inMilliseconds dt))
+                    |> add player.position
+            else
+                player.position
     in
         { player
             | position = newPosition
@@ -237,7 +244,7 @@ collisionOfPlayer oldPlayer newPlayer lines =
                 cornerPosition =
                     computePosition corner oldPlayer
 
-                translationLine =
+                translationLineSegment =
                     { a = cornerPosition
                     , b = add cornerPosition translation
                     }
@@ -247,7 +254,7 @@ collisionOfPlayer oldPlayer newPlayer lines =
                     , b = line.right
                     }
             in
-                case intersection translationLine (lineSegment line) of
+                case intersection translationLineSegment (lineSegment line) of
                     Just i ->
                         ( sub i cornerPosition, Just (lineSegment line) )
 
@@ -281,16 +288,18 @@ collisionOfPlayer oldPlayer newPlayer lines =
         newResting =
             case possibleResting of
                 Just ( lineSegment, corner ) ->
-                    Dict.insert corner lineSegment oldPlayer.resting
+                    Dict.insert corner lineSegment newPlayer.resting
 
                 Nothing ->
-                    oldPlayer.resting
+                    newPlayer.resting
 
         newVelocity =
-            if Dict.isEmpty newResting then
-                newPlayer.velocity
-            else
-                0
+            case possibleResting of
+                Just _ ->
+                    0
+
+                Nothing ->
+                    newPlayer.velocity
     in
         { newPlayer
             | position = add oldPlayer.position smallestTranslation

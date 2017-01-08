@@ -212,9 +212,9 @@ subscriptions model =
             if model.paused then
                 Sub.none
             else
-                --AnimationFrame.times Tick
-                Time.every (100 * Time.millisecond) Tick
+                AnimationFrame.times Tick
 
+        --Time.every (50 * Time.millisecond) Tick
         keyDowns =
             Keyboard.downs KeyDown
 
