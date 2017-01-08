@@ -117,63 +117,6 @@ movementOfPlayer dt movement player =
             directionVector
                 |> scale (speed * (Time.inMilliseconds dt))
 
-        actualTranslation =
-            Maybe.withDefault translation <|
-                List.head <|
-                    Debug.log "ascension" <|
-                        List.sortWith compareY <|
-                            List.map (adjustTranslation translation) <|
-                                Dict.toList player.resting
-
-        compareY v w =
-            if (getY v) < (getY w) then
-                LT
-            else if (getY v) > (getY w) then
-                GT
-            else
-                EQ
-
-        adjustTranslation translation ( cornerIndex, lineSegment ) =
-            let
-                _ =
-                    Debug.log "adjusted translation"
-
-                corner =
-                    case cornerIndex of
-                        0 ->
-                            A
-
-                        1 ->
-                            B
-
-                        2 ->
-                            C
-
-                        3 ->
-                            D
-
-                        _ ->
-                            A
-
-                cornerPosition =
-                    computePosition corner player
-
-                newTranslation =
-                    case
-                        intersectionInfiniteLineLineSegment
-                            { anchor = add cornerPosition translation
-                            , direction = vec2 0 1
-                            }
-                            lineSegment
-                    of
-                        Just intersection ->
-                            sub intersection cornerPosition
-
-                        Nothing ->
-                            translation
-            in
-                newTranslation
-
         rotation =
             if Dict.isEmpty player.resting then
                 case movement of
@@ -189,14 +132,9 @@ movementOfPlayer dt movement player =
                 0
     in
         { player
-            | position = add player.position actualTranslation
+            | position = add player.position translation
             , rotation = player.rotation + rotation
         }
-
-
-round : Vec2 -> Vec2
-round v =
-    vec2 (toFloat <| ceiling <| getX v) (toFloat <| ceiling <| getY v)
 
 
 {-| Apply gravitational force onto player.
@@ -214,12 +152,13 @@ gravityOfPlayer dt player =
                 player.velocity
 
         newPosition =
-            if Dict.isEmpty player.resting then
-                vec2 0 1
-                    |> scale (newVelocity * (Time.inMilliseconds dt))
-                    |> add player.position
-            else
-                player.position
+            --            if Dict.isEmpty player.resting then
+            vec2 0 1
+                |> scale (newVelocity * (Time.inMilliseconds dt))
+                |> add player.position
+
+        --            else
+        --                player.position
     in
         { player
             | position = newPosition
@@ -293,6 +232,63 @@ collisionOfPlayer oldPlayer newPlayer lines =
                 Nothing ->
                     newPlayer.resting
 
+        restTranslation =
+            sub oldTranslation smallestTranslation
+
+        actualRestTranslation =
+            Maybe.withDefault restTranslation <|
+                List.head <|
+                    List.sortWith compareY <|
+                        List.map (adjustTranslation restTranslation) <|
+                            Dict.toList newResting
+
+        compareY v w =
+            if (getY v) < (getY w) then
+                LT
+            else if (getY v) > (getY w) then
+                GT
+            else
+                EQ
+
+        adjustTranslation restTranslation ( cornerIndex, lineSegment ) =
+            let
+                corner =
+                    case cornerIndex of
+                        0 ->
+                            A
+
+                        1 ->
+                            B
+
+                        2 ->
+                            C
+
+                        3 ->
+                            D
+
+                        _ ->
+                            A
+
+                cornerPosition =
+                    add (computePosition corner oldPlayer)
+                        smallestTranslation
+
+                newRestTranslation =
+                    case
+                        intersectionInfiniteLineLineSegment
+                            { anchor = add cornerPosition restTranslation
+                            , direction = vec2 0 1
+                            }
+                            lineSegment
+                    of
+                        Just intersection ->
+                            sub intersection cornerPosition
+
+                        Nothing ->
+                            restTranslation
+            in
+                newRestTranslation
+
         newVelocity =
             case possibleResting of
                 Just _ ->
@@ -302,7 +298,10 @@ collisionOfPlayer oldPlayer newPlayer lines =
                     newPlayer.velocity
     in
         { newPlayer
-            | position = add oldPlayer.position smallestTranslation
+            | position =
+                oldPlayer.position
+                    |> add smallestTranslation
+                    |> add actualRestTranslation
             , resting = newResting
             , velocity = newVelocity
         }
