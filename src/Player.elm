@@ -32,6 +32,19 @@ defaultPlayer =
     }
 
 
+collidePlayer : List LineSegment -> Player -> Player -> Player
+collidePlayer lineSegments oldPlayer newPlayer =
+    List.foldr
+        (\lineSegment player -> collideWithLineSegment lineSegment player newPlayer)
+        oldPlayer
+        lineSegments
+
+
+{-| Given the original player state and a new player state, compute the
+actual future player state taking into account possible collision with
+the given line segment.  Note that we return the old player state, if it
+already touches a line segment with at least one of its corners.
+-}
 collideWithLineSegment : LineSegment -> Player -> Player -> Player
 collideWithLineSegment lineSegment oldPlayer newPlayer =
     let
@@ -76,10 +89,92 @@ collideWithLineSegment lineSegment oldPlayer newPlayer =
                     , oldPlayer.resting
                     )
     in
-        { oldPlayer
-            | position = add oldPlayer.position newTranslation
-            , resting = newResting
-        }
+        if Dict.size oldPlayer.resting == 1 then
+            { oldPlayer
+                | velocity = newPlayer.velocity
+            }
+        else if Dict.size oldPlayer.resting >= 2 then
+            oldPlayer
+        else
+            { oldPlayer
+                | position = add oldPlayer.position newTranslation
+                , resting = newResting
+                , velocity = newPlayer.velocity
+                , rotation = newPlayer.rotation
+            }
+
+
+{-| Given the original player state and a new player state, compute the
+actual future player state taking into account possible translation
+along the line segments the old player touches.
+
+TODO: also rotate the player if only one corner touches a line segment.
+-}
+translateAndRotateAlongLineSegments : Player -> Player -> Player
+translateAndRotateAlongLineSegments oldPlayer newPlayer =
+    let
+        oldTranslation =
+            sub newPlayer.position oldPlayer.position
+
+        newTranslation corner segment =
+            let
+                cornerPosition =
+                    computeCornerPosition corner oldPlayer
+
+                intersection =
+                    intersectionInfiniteLineLineSegment
+                        { anchor =
+                            add cornerPosition
+                                oldTranslation
+                        , direction = vec2 0 1
+                        }
+                        segment
+            in
+                Maybe.map (\i -> sub i cornerPosition) intersection
+    in
+        case Dict.toList oldPlayer.resting of
+            [ ( corner1, lineSegment1 ), ( corner2, lineSegment2 ) ] ->
+                let
+                    v1 =
+                        newTranslation corner1 lineSegment1
+
+                    v2 =
+                        newTranslation corner2 lineSegment2
+                in
+                    case ( v1, v2 ) of
+                        ( Just w1, Just w2 ) ->
+                            --TODO
+                            newPlayer
+
+                        ( Just w, Nothing ) ->
+                            { oldPlayer
+                                | position = add oldPlayer.position w
+                            }
+
+                        ( Nothing, Just w ) ->
+                            { oldPlayer
+                                | position = add oldPlayer.position w
+                            }
+
+                        _ ->
+                            newPlayer
+
+            [ ( corner, lineSegment ) ] ->
+                let
+                    v =
+                        newTranslation corner lineSegment
+                in
+                    case v of
+                        Just w ->
+                            { oldPlayer
+                                | position = add oldPlayer.position w
+                            }
+
+                        Nothing ->
+                            newPlayer
+
+            _ ->
+                newPlayer
 
 
 {-| Type to select the corner of a Player.  LowerLeft, ..., UpperRight

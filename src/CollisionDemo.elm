@@ -165,162 +165,17 @@ gravityOfPlayer dt player =
 {-| Adjust the translation of the player taking into account collision
 of its corners with the lines.  Returns the decreased translation vector
 and the resting corner.
-
-TODO: also take into account the additional rotation
 -}
 collisionOfPlayer : Player -> Player -> List Line -> Player
 collisionOfPlayer oldPlayer newPlayer lines =
     let
-        oldTranslation =
-            sub newPlayer.position oldPlayer.position
-
-        cropTranslationOfCorner corner line ( translation, restingLineSegment ) =
-            let
-                cornerPosition =
-                    computePosition corner oldPlayer
-
-                translationLineSegment =
-                    { a = cornerPosition
-                    , b = add cornerPosition translation
-                    }
-
-                lineSegment line =
-                    { a = line.left
-                    , b = line.right
-                    }
-            in
-                case intersection translationLineSegment (lineSegment line) of
-                    Just i ->
-                        ( sub i cornerPosition, Just (lineSegment line) )
-
-                    Nothing ->
-                        ( translation, restingLineSegment )
-
-        newTranslationOfCorner corner =
-            List.foldr (cropTranslationOfCorner corner) ( oldTranslation, Nothing ) lines
-
-        ( smallestTranslation, possibleResting ) =
-            Maybe.withDefault ( vec2 0 0, Nothing ) <|
-                List.head <|
-                    let
-                        format ( ( translation, restingLineSegment ), corner ) =
-                            case restingLineSegment of
-                                Just lineSegment ->
-                                    ( translation, Just ( lineSegment, corner ) )
-
-                                Nothing ->
-                                    ( translation, Nothing )
-                    in
-                        List.map format <|
-                            List.sortBy
-                                (length << Tuple.first << Tuple.first)
-                                [ ( newTranslationOfCorner A, 0 )
-                                , ( newTranslationOfCorner B, 1 )
-                                , ( newTranslationOfCorner C, 2 )
-                                , ( newTranslationOfCorner D, 3 )
-                                ]
-
-        newResting =
-            case possibleResting of
-                Just ( lineSegment, corner ) ->
-                    Dict.insert corner lineSegment newPlayer.resting
-
-                Nothing ->
-                    newPlayer.resting
-
-        restTranslation =
-            sub oldTranslation smallestTranslation
-
-        actualRestTranslation =
-            Maybe.withDefault restTranslation <|
-                List.head <|
-                    List.sortWith compareY <|
-                        List.map (adjustTranslation restTranslation) <|
-                            Dict.toList newResting
-
-        compareY v w =
-            if (getY v) < (getY w) then
-                LT
-            else if (getY v) > (getY w) then
-                GT
-            else
-                EQ
-
-        adjustTranslation restTranslation ( cornerIndex, lineSegment ) =
-            let
-                corner =
-                    case cornerIndex of
-                        0 ->
-                            A
-
-                        1 ->
-                            B
-
-                        2 ->
-                            C
-
-                        3 ->
-                            D
-
-                        _ ->
-                            A
-
-                cornerPosition =
-                    add (computePosition corner oldPlayer)
-                        smallestTranslation
-
-                newRestTranslation =
-                    case
-                        intersectionInfiniteLineLineSegment
-                            { anchor = add cornerPosition restTranslation
-                            , direction = vec2 0 1
-                            }
-                            lineSegment
-                    of
-                        Just intersection ->
-                            sub intersection cornerPosition
-
-                        Nothing ->
-                            restTranslation
-            in
-                newRestTranslation
-
-        newVelocity =
-            case possibleResting of
-                Just _ ->
-                    0
-
-                Nothing ->
-                    newPlayer.velocity
-
-        newPosition =
-            oldPlayer.position
-                |> add smallestTranslation
-                |> add actualRestTranslation
-
-        rotationAmount =
-            --(length restTranslation - length actualRestTranslation) / 100
-            getY restTranslation / 5
-
-        rotatedPlayer player =
-            if
-                (Dict.member (lowerLeftCorner player) newResting)
-                    && (Dict.member (lowerRightCorner player) newResting)
-            then
-                player
-            else if (Dict.member (lowerLeftCorner player) newResting) then
-                rotateAroundCorner LowerLeft (-1 * rotationAmount) player
-            else if (Dict.member (lowerRightCorner player) newResting) then
-                rotateAroundCorner LowerRight rotationAmount player
-            else
-                player
-    in
-        rotatedPlayer
-            { newPlayer
-                | position = newPosition
-                , resting = newResting
-                , velocity = newVelocity
+        lineSegment line =
+            { a = line.left
+            , b = line.right
             }
+    in
+        translateAndRotateAlongLineSegments oldPlayer <|
+            collidePlayer (List.map lineSegment lines) oldPlayer newPlayer
 
 
 stepPlayers : Time -> State -> State
@@ -339,7 +194,8 @@ stepPlayer : Time -> State -> Player -> Player
 stepPlayer dt state player =
     let
         newPlayer =
-            gravityOfPlayer dt <| movementOfPlayer dt state.movement player
+            gravityOfPlayer dt <|
+                movementOfPlayer dt state.movement player
 
         lines =
             List.concat
