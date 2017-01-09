@@ -48,6 +48,39 @@ type Corner
     | D
 
 
+lowerLeftCorner : Player -> Int
+lowerLeftCorner player =
+    (floor (2 * player.rotation / pi + 1 / 2)) % 4
+
+
+lowerRightCorner : Player -> Int
+lowerRightCorner player =
+    if lowerLeftCorner player == 3 then
+        0
+    else
+        lowerLeftCorner player + 1
+
+
+{-| Rotate counter-clockwise
+-}
+rotateAroundCorner : Corner -> Float -> Player -> Player
+rotateAroundCorner corner angle player =
+    let
+        cornerPosition =
+            computePosition corner player
+
+        v =
+            sub player.position cornerPosition
+
+        w =
+            rotate angle v
+    in
+        { player
+            | position = add w cornerPosition
+            , rotation = player.rotation + angle
+        }
+
+
 computePosition : Corner -> Player -> Vec2
 computePosition corner player =
     let

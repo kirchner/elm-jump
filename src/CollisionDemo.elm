@@ -146,19 +146,15 @@ gravityOfPlayer dt player =
             0.0004
 
         newVelocity =
-            if Dict.isEmpty player.resting then
+            if Dict.size player.resting < 2 then
                 acceleration * (Time.inMilliseconds dt) + player.velocity
             else
                 player.velocity
 
         newPosition =
-            --            if Dict.isEmpty player.resting then
             vec2 0 1
                 |> scale (newVelocity * (Time.inMilliseconds dt))
                 |> add player.position
-
-        --            else
-        --                player.position
     in
         { player
             | position = newPosition
@@ -296,15 +292,35 @@ collisionOfPlayer oldPlayer newPlayer lines =
 
                 Nothing ->
                     newPlayer.velocity
+
+        newPosition =
+            oldPlayer.position
+                |> add smallestTranslation
+                |> add actualRestTranslation
+
+        rotationAmount =
+            --(length restTranslation - length actualRestTranslation) / 100
+            getY restTranslation / 5
+
+        rotatedPlayer player =
+            if
+                (Dict.member (lowerLeftCorner player) newResting)
+                    && (Dict.member (lowerRightCorner player) newResting)
+            then
+                player
+            else if (Dict.member (lowerLeftCorner player) newResting) then
+                rotateAroundCorner LowerLeft (-1 * rotationAmount) player
+            else if (Dict.member (lowerRightCorner player) newResting) then
+                rotateAroundCorner LowerRight rotationAmount player
+            else
+                player
     in
-        { newPlayer
-            | position =
-                oldPlayer.position
-                    |> add smallestTranslation
-                    |> add actualRestTranslation
-            , resting = newResting
-            , velocity = newVelocity
-        }
+        rotatedPlayer
+            { newPlayer
+                | position = newPosition
+                , resting = newResting
+                , velocity = newVelocity
+            }
 
 
 stepPlayers : Time -> State -> State
