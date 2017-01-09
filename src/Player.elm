@@ -32,6 +32,56 @@ defaultPlayer =
     }
 
 
+collideWithLineSegment : LineSegment -> Player -> Player -> Player
+collideWithLineSegment lineSegment oldPlayer newPlayer =
+    let
+        oldTranslation =
+            sub newPlayer.position oldPlayer.position
+
+        newTranslationOfCorner corner =
+            let
+                cornerPosition =
+                    computeCornerPosition corner oldPlayer
+
+                translationLineSegment =
+                    { a = cornerPosition
+                    , b = add cornerPosition oldTranslation
+                    }
+            in
+                case intersection translationLineSegment lineSegment of
+                    Just i ->
+                        Just ( sub i cornerPosition, corner )
+
+                    Nothing ->
+                        Nothing
+
+        allCroppedTranslations =
+            List.sortBy (length << Tuple.first) <|
+                List.filterMap identity
+                    [ newTranslationOfCorner 0
+                    , newTranslationOfCorner 1
+                    , newTranslationOfCorner 2
+                    , newTranslationOfCorner 3
+                    ]
+
+        ( newTranslation, newResting ) =
+            case allCroppedTranslations of
+                [ ( translation, corner ) ] ->
+                    ( translation
+                    , Dict.insert corner lineSegment oldPlayer.resting
+                    )
+
+                _ ->
+                    ( oldTranslation
+                    , oldPlayer.resting
+                    )
+    in
+        { oldPlayer
+            | position = add oldPlayer.position newTranslation
+            , resting = newResting
+        }
+
+
 {-| Type to select the corner of a Player.  LowerLeft, ..., UpperRight
 are with respect to the current rotation.  A, ..., D are always the same
 corners.  If rotation == 0, we have A = LowerLeft, B = LowerRight,
@@ -79,6 +129,27 @@ rotateAroundCorner corner angle player =
             | position = add w cornerPosition
             , rotation = player.rotation + angle
         }
+
+
+computeCornerPosition : Int -> Player -> Vec2
+computeCornerPosition corner player =
+    let
+        names =
+            [ A
+            , B
+            , C
+            , D
+            ]
+
+        cornerName =
+            List.head <| List.drop corner names
+    in
+        case cornerName of
+            Just name ->
+                computePosition name player
+
+            Nothing ->
+                player.position
 
 
 computePosition : Corner -> Player -> Vec2
