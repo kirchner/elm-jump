@@ -220,14 +220,19 @@ drawPlayer player =
                 )
                 []
     in
-        [ Svg.rect
-            [ Svg.x <| toString (getX player.position - 10)
-            , Svg.y <| toString (getY player.position - player.height)
-            , Svg.width "20"
-            , Svg.height (player.height |> toString)
+        [ Svg.circle
+            [ Svg.cx <| toString <| getX player.position
+            , Svg.cy <| toString <| getY player.position
+            , Svg.r "4"
             , Svg.fill player.color
             ]
             []
+        , Svg.text_
+            [ Svg.x <| toString (getX player.position - 10)
+            , Svg.y <| toString (getY player.position - player.height - 20)
+            ]
+            [ Svg.text <| toString player.velocity
+            ]
         , drawCorner LowerLeft
             [ Svg.fill player.color
             , Svg.r "3"
@@ -266,13 +271,13 @@ drawGround state =
         lines =
             List.concat
                 [ state.ground
-                , state.players
-                    |> List.map
-                        (\player ->
-                            { left = player.position |> add (vec2 (-10) (-player.height))
-                            , right = player.position |> add (vec2 10 (-player.height))
-                            }
-                        )
+                  --, state.players
+                  --    |> List.map
+                  --        (\player ->
+                  --            { left = player.position |> add (vec2 (-10) (-player.height))
+                  --            , right = player.position |> add (vec2 10 (-player.height))
+                  --            }
+                  --        )
                 ]
     in
         Svg.g [] <| List.map drawLine lines
