@@ -2,6 +2,7 @@ module Player exposing (..)
 
 import Dict exposing (Dict)
 import Math.Vector2 exposing (..)
+import Time exposing (Time)
 
 
 {-| State of one player entity.  Position is given wrt the center.
@@ -9,10 +10,10 @@ Rotation tells how much radians it is rotated counterclockwise.
 -}
 type alias Player =
     { position : Vec2
+    , velocity : Vec2
     , width : Float
     , height : Float
     , rotation : Float
-    , velocity : Float
     , color : String
     , active : Bool
     , resting : Dict Int LineSegment
@@ -22,14 +23,53 @@ type alias Player =
 defaultPlayer : Player
 defaultPlayer =
     { position = vec2 0 0
+    , velocity = vec2 0 0
     , width = 40
     , height = 20
     , rotation = 0
-    , velocity = 0
     , color = "#000"
     , active = False
     , resting = Dict.empty
     }
+
+
+stepPlayer : Time -> List LineSegment -> Player -> Player
+stepPlayer dt lineSegments player =
+    let
+        propagatedPlayer =
+            propagatePlayer dt player
+
+        collidedPlayer =
+            collidePlayer lineSegments player propagatedPlayer
+
+        newPlayer =
+            translateAndRotateAlongLineSegments collidedPlayer propagatedPlayer
+    in
+        newPlayer
+
+
+propagatePlayer : Time -> Player -> Player
+propagatePlayer dt player =
+    let
+        acceleration =
+            0.0005
+
+        newVelocity =
+            if Dict.size player.resting < 1 then
+                add
+                    (vec2 0 (acceleration * (Time.inMilliseconds dt)))
+                    player.velocity
+            else
+                player.velocity
+
+        newPosition =
+            scale (Time.inMilliseconds dt) newVelocity
+                |> add player.position
+    in
+        { player
+            | velocity = newVelocity
+            , position = newPosition
+        }
 
 
 collidePlayer : List LineSegment -> Player -> Player -> Player

@@ -91,111 +91,13 @@ type alias Line =
 -- STEP
 
 
-{-| Translate and rotate the player in the given direction.
--}
-movementOfPlayer : Time -> Maybe Direction -> Player -> Player
-movementOfPlayer dt movement player =
-    let
-        speed =
-            0.1
-
-        rotationSpeed =
-            0.001
-
-        directionVector =
-            case movement of
-                Just Left ->
-                    vec2 -1 0
-
-                Just Right ->
-                    vec2 1 0
-
-                Nothing ->
-                    vec2 0 0
-
-        translation =
-            directionVector
-                |> scale (speed * (Time.inMilliseconds dt))
-
-        rotation =
-            if Dict.isEmpty player.resting then
-                case movement of
-                    Just Left ->
-                        (Time.inMilliseconds dt) * rotationSpeed
-
-                    Just Right ->
-                        -1 * (Time.inMilliseconds dt) * rotationSpeed
-
-                    Nothing ->
-                        0
-            else
-                0
-    in
-        { player
-            | position = add player.position translation
-            , rotation = player.rotation + rotation
-        }
-
-
-{-| Apply gravitational force onto player.
--}
-gravityOfPlayer : Time -> Player -> Player
-gravityOfPlayer dt player =
-    let
-        acceleration =
-            0.0004
-
-        newVelocity =
-            if Dict.size player.resting < 2 then
-                acceleration * (Time.inMilliseconds dt) + player.velocity
-            else
-                player.velocity
-
-        newPosition =
-            vec2 0 1
-                |> scale (newVelocity * (Time.inMilliseconds dt))
-                |> add player.position
-    in
-        { player
-            | position = newPosition
-            , velocity = newVelocity
-        }
-
-
-{-| Adjust the translation of the player taking into account collision
-of its corners with the lines.  Returns the decreased translation vector
-and the resting corner.
--}
-collisionOfPlayer : Player -> Player -> List Line -> Player
-collisionOfPlayer oldPlayer newPlayer lines =
+stepPlayers : Time -> State -> State
+stepPlayers dt state =
     let
         lineSegment line =
             { a = line.left
             , b = line.right
             }
-    in
-        translateAndRotateAlongLineSegments oldPlayer <|
-            collidePlayer (List.map lineSegment lines) oldPlayer newPlayer
-
-
-stepPlayers : Time -> State -> State
-stepPlayers dt state =
-    let
-        newPlayers =
-            state.players
-                |> List.map (stepPlayer dt state)
-    in
-        { state
-            | players = newPlayers
-        }
-
-
-stepPlayer : Time -> State -> Player -> Player
-stepPlayer dt state player =
-    let
-        newPlayer =
-            gravityOfPlayer dt <|
-                movementOfPlayer dt state.movement player
 
         lines =
             List.concat
@@ -208,8 +110,17 @@ stepPlayer dt state player =
                   --            }
                   --        )
                 ]
+
+        lineSegments =
+            List.map lineSegment lines
+
+        newPlayers =
+            state.players
+                |> List.map (stepPlayer dt lineSegments)
     in
-        collisionOfPlayer player newPlayer lines
+        { state
+            | players = newPlayers
+        }
 
 
 {-| Compute new State.
@@ -404,7 +315,10 @@ execute cmd state =
                             (\i player ->
                                 if i == state.activePlayer then
                                     { player
-                                        | velocity = -0.3
+                                        | velocity =
+                                            vec2
+                                                (getX player.velocity)
+                                                -0.3
                                         , resting = Dict.empty
                                     }
                                 else
@@ -414,10 +328,57 @@ execute cmd state =
                 { state | players = players } ! []
 
         Move direction ->
-            { state | movement = Just direction } ! []
+            let
+                sideVelocity =
+                    case direction of
+                        Left ->
+                            -0.1
+
+                        Right ->
+                            0.1
+
+                players =
+                    state.players
+                        |> List.indexedMap
+                            (\i player ->
+                                if i == state.activePlayer then
+                                    let
+                                        newVelocity =
+                                            vec2 sideVelocity
+                                                (getY player.velocity)
+                                    in
+                                        { player
+                                            | velocity = newVelocity
+                                        }
+                                else
+                                    player
+                            )
+            in
+                { state | players = players } ! []
 
         Halt ->
-            { state | movement = Nothing } ! []
+            let
+                sideVelocity =
+                    0
+
+                players =
+                    state.players
+                        |> List.indexedMap
+                            (\i player ->
+                                if i == state.activePlayer then
+                                    let
+                                        newVelocity =
+                                            vec2 sideVelocity
+                                                (getY player.velocity)
+                                    in
+                                        { player
+                                            | velocity = newVelocity
+                                        }
+                                else
+                                    player
+                            )
+            in
+                { state | players = players } ! []
 
         Cycle ->
             let
