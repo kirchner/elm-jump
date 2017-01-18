@@ -53,7 +53,8 @@ type alias State =
     { movement : Maybe Direction
     , ground : List Line
     , tcamera : Camera.T
-    , players : List Player
+    , curPlayers : List Player
+    , prevPlayers : List Player
     , activePlayer : Int
     }
 
@@ -68,11 +69,30 @@ defaultState =
         ]
     , tcamera =
         Camera.defaultT
-    , players =
+    , curPlayers =
         [ { defaultPlayer
-            | position = vec2 300 0
+            | positions =
+                { a = vec2 300 0
+                , b = vec2 300 20
+                , c = vec2 320 20
+                , d = vec2 320 0
+                }
+            , width = 20
             , height = 20
-            , rotation = -1 * pi / 4
+            , color = "#ffcc00"
+            , active = True
+          }
+        ]
+    , prevPlayers =
+        [ { defaultPlayer
+            | positions =
+                { a = vec2 300 0
+                , b = vec2 300 20
+                , c = vec2 320 20
+                , d = vec2 320 0
+                }
+            , width = 20
+            , height = 20
             , color = "#ffcc00"
             , active = True
           }
@@ -115,11 +135,14 @@ stepPlayers dt state =
             List.map lineSegment lines
 
         newPlayers =
-            state.players
-                |> List.map (stepPlayer dt lineSegments)
+            List.map2
+                (stepPlayer dt lineSegments)
+                state.curPlayers
+                state.prevPlayers
     in
         { state
-            | players = newPlayers
+            | curPlayers = newPlayers
+            , prevPlayers = state.curPlayers
         }
 
 
@@ -139,7 +162,7 @@ camera dt state =
             state.tcamera.lastFrame + dt
 
         player =
-            state.players
+            state.curPlayers
                 |> List.drop state.activePlayer
                 |> List.head
                 |> Maybe.withDefault defaultPlayer
@@ -152,17 +175,20 @@ camera dt state =
                             pointOfInterest =
                                 vec2 500 150
 
+                            position =
+                                player.positions.a
+
                             p =
-                                Vec2.length (Vec2.sub player.position pointOfInterest) <= 100
+                                Vec2.length (Vec2.sub position pointOfInterest) <= 100
                          in
                             if p then
                                 { defaultCamera
-                                    | position = player.position
+                                    | position = position
                                     , scale = 2.5
                                 }
                             else
                                 { defaultCamera
-                                    | position = player.position
+                                    | position = position
                                     , scale = 1
                                 }
                         )
@@ -186,7 +212,7 @@ draw dt state =
             , Svg.transform (Camera.transform state.tcamera.lastCamera)
             ]
             (List.concat
-                [ state.players
+                [ state.curPlayers
                     |> List.indexedMap (,)
                     |> List.sortBy
                         (\( i, r ) ->
@@ -211,47 +237,16 @@ draw dt state =
 drawPlayer : Player -> List (Svg m)
 drawPlayer player =
     let
-        drawCorner corner attr =
+        drawCorner position =
             Svg.circle
-                (attr
-                    ++ [ Svg.cx <| toString <| getX <| computePosition corner player
-                       , Svg.cy <| toString <| getY <| computePosition corner player
-                       ]
-                )
+                [ Svg.cx <| toString <| getX <| position
+                , Svg.cy <| toString <| getY <| position
+                , Svg.r "2"
+                , Svg.fill player.color
+                ]
                 []
     in
-        [ Svg.circle
-            [ Svg.cx <| toString <| getX player.position
-            , Svg.cy <| toString <| getY player.position
-            , Svg.r "4"
-            , Svg.fill player.color
-            ]
-            []
-        , Svg.text_
-            [ Svg.x <| toString (getX player.position - 10)
-            , Svg.y <| toString (getY player.position - player.height - 20)
-            ]
-            [ Svg.text <| toString player.velocity
-            ]
-        , drawCorner LowerLeft
-            [ Svg.fill player.color
-            , Svg.r "3"
-            ]
-        , drawCorner LowerRight
-            [ Svg.fill player.color
-            , Svg.r "3"
-            ]
-        , drawCorner A
-            [ Svg.fill "green"
-            , Svg.r "1"
-            ]
-        , drawCorner B
-            [ Svg.r "1" ]
-        , drawCorner C
-            [ Svg.r "1" ]
-        , drawCorner D
-            [ Svg.r "1" ]
-        ]
+        (List.map (\a -> drawCorner (a player.positions)) [ .a, .b, .c, .d ])
 
 
 drawGround : State -> Svg m
@@ -313,84 +308,20 @@ execute cmd state =
             state ! []
 
         Jump ->
-            let
-                players =
-                    state.players
-                        |> List.indexedMap
-                            (\i player ->
-                                if i == state.activePlayer then
-                                    { player
-                                        | velocity =
-                                            vec2
-                                                (getX player.velocity)
-                                                -0.3
-                                        , resting = Dict.empty
-                                    }
-                                else
-                                    player
-                            )
-            in
-                { state | players = players } ! []
+            state ! []
 
         Move direction ->
-            let
-                sideVelocity =
-                    case direction of
-                        Left ->
-                            -0.1
-
-                        Right ->
-                            0.1
-
-                players =
-                    state.players
-                        |> List.indexedMap
-                            (\i player ->
-                                if i == state.activePlayer then
-                                    let
-                                        newVelocity =
-                                            vec2 sideVelocity
-                                                (getY player.velocity)
-                                    in
-                                        { player
-                                            | velocity = newVelocity
-                                        }
-                                else
-                                    player
-                            )
-            in
-                { state | players = players } ! []
+            state ! []
 
         Halt ->
-            let
-                sideVelocity =
-                    0
-
-                players =
-                    state.players
-                        |> List.indexedMap
-                            (\i player ->
-                                if i == state.activePlayer then
-                                    let
-                                        newVelocity =
-                                            vec2 sideVelocity
-                                                (getY player.velocity)
-                                    in
-                                        { player
-                                            | velocity = newVelocity
-                                        }
-                                else
-                                    player
-                            )
-            in
-                { state | players = players } ! []
+            state ! []
 
         Cycle ->
             let
                 activePlayer =
                     state.activePlayer
                         + 1
-                        |> flip (%) (List.length state.players)
+                        |> flip (%) (List.length state.curPlayers)
             in
                 { state
                     | activePlayer = activePlayer

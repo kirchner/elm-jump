@@ -9,349 +9,159 @@ import Time exposing (Time)
 Rotation tells how much radians it is rotated counterclockwise.
 -}
 type alias Player =
-    { position : Vec2
-    , velocity : Vec2
+    { positions :
+        { a : Vec2
+        , b : Vec2
+        , c : Vec2
+        , d : Vec2
+        }
     , width : Float
     , height : Float
-    , rotation : Float
     , color : String
     , active : Bool
-    , resting : Dict Int LineSegment
     }
 
 
 defaultPlayer : Player
 defaultPlayer =
-    { position = vec2 0 0
-    , velocity = vec2 0 0
-    , width = 40
-    , height = 20
-    , rotation = 0
+    { positions =
+        { a = vec2 0 0
+        , b = vec2 0 10
+        , c = vec2 10 10
+        , d = vec2 10 0
+        }
+    , width = 10
+    , height = 10
     , color = "#000"
     , active = False
-    , resting = Dict.empty
     }
 
 
-stepPlayer : Time -> List LineSegment -> Player -> Player
-stepPlayer dt lineSegments player =
+stepPlayer : Time -> List LineSegment -> Player -> Player -> Player
+stepPlayer dt lineSegments curPlayer prevPlayer =
     let
         propagatedPlayer =
-            propagatePlayer dt player
-
-        collidedPlayer =
-            collidePlayer lineSegments player propagatedPlayer
+            velvetPlayer dt curPlayer prevPlayer
 
         newPlayer =
-            translateAndRotateAlongLineSegments collidedPlayer propagatedPlayer
+            constraintPlayer lineSegments propagatedPlayer curPlayer
     in
         newPlayer
 
 
-propagatePlayer : Time -> Player -> Player
-propagatePlayer dt player =
+velvetPlayer : Time -> Player -> Player -> Player
+velvetPlayer dt curPlayer prevPlayer =
     let
+        -- we only consider gravitational acceleration for the moment
         acceleration =
-            0.0005
+            vec2 0 0.0005
 
-        newVelocity =
-            if Dict.size player.resting < 1 then
-                add
-                    (vec2 0 (acceleration * (Time.inMilliseconds dt)))
-                    player.velocity
-            else
-                player.velocity
+        newPositions =
+            { a = velvetPosition .a
+            , b = velvetPosition .b
+            , c = velvetPosition .c
+            , d = velvetPosition .d
+            }
 
-        newPosition =
-            scale (Time.inMilliseconds dt) newVelocity
-                |> add player.position
+        velvetPosition accessor =
+            sub (scale 2 (accessor curPlayer.positions)) (accessor prevPlayer.positions)
+                |> add (scale (dt * dt) acceleration)
     in
-        { player
-            | velocity = newVelocity
-            , position = newPosition
+        { curPlayer | positions = newPositions }
+
+
+constraintPlayer : List LineSegment -> Player -> Player -> Player
+constraintPlayer lineSegments newPlayer curPlayer =
+    let
+        collidedPoints =
+            { a = collidedPoint .a
+            , b = collidedPoint .b
+            , c = collidedPoint .c
+            , d = collidedPoint .d
+            }
+
+        collidedPoint accessor =
+            constraintCollision
+                lineSegments
+                (accessor newPlayer.positions)
+                (accessor curPlayer.positions)
+
+        ( a1, b1 ) =
+            constraintDistance
+                newPlayer.height
+                ( collidedPoints.a, collidedPoints.b )
+
+        ( b2, c1 ) =
+            constraintDistance
+                newPlayer.width
+                ( b1, collidedPoints.c )
+
+        ( c2, d1 ) =
+            constraintDistance
+                newPlayer.height
+                ( c1, collidedPoints.d )
+
+        ( d2, a2 ) =
+            constraintDistance
+                newPlayer.width
+                ( d1, a1 )
+    in
+        { newPlayer
+            | positions =
+                { a = a2
+                , b = b2
+                , c = c2
+                , d = d2
+                }
         }
 
 
-collidePlayer : List LineSegment -> Player -> Player -> Player
-collidePlayer lineSegments oldPlayer newPlayer =
-    List.foldr
-        (\lineSegment player -> collideWithLineSegment lineSegment player newPlayer)
-        oldPlayer
-        lineSegments
-
-
-{-| Given the original player state and a new player state, compute the
-actual future player state taking into account possible collision with
-the given line segment.  Note that we return the old player state, if it
-already touches a line segment with at least one of its corners.
--}
-collideWithLineSegment : LineSegment -> Player -> Player -> Player
-collideWithLineSegment lineSegment oldPlayer newPlayer =
+constraintCollision : List LineSegment -> Vec2 -> Vec2 -> Vec2
+constraintCollision lineSegments newPosition curPosition =
     let
         oldTranslation =
-            sub newPlayer.position oldPlayer.position
+            sub newPosition curPosition
 
-        newTranslationOfCorner corner =
-            let
-                cornerPosition =
-                    computeCornerPosition corner oldPlayer
-
-                translationLineSegment =
-                    { a = cornerPosition
-                    , b = add cornerPosition oldTranslation
-                    }
-            in
-                case intersection translationLineSegment lineSegment of
-                    Just i ->
-                        Just ( sub i cornerPosition, corner )
-
-                    Nothing ->
-                        Nothing
-
-        allCroppedTranslations =
-            List.sortBy (length << Tuple.first) <|
-                List.filterMap identity
-                    [ newTranslationOfCorner 0
-                    , newTranslationOfCorner 1
-                    , newTranslationOfCorner 2
-                    , newTranslationOfCorner 3
-                    ]
-
-        ( newTranslation, newResting ) =
-            case allCroppedTranslations of
-                [ ( translation, corner ) ] ->
-                    ( translation
-                    , Dict.insert corner lineSegment oldPlayer.resting
-                    )
-
-                _ ->
-                    ( oldTranslation
-                    , oldPlayer.resting
-                    )
-    in
-        if Dict.size oldPlayer.resting == 1 then
-            { oldPlayer
-                | velocity = newPlayer.velocity
-            }
-        else if Dict.size oldPlayer.resting >= 2 then
-            oldPlayer
-        else
-            { oldPlayer
-                | position = add oldPlayer.position newTranslation
-                , resting = newResting
-                , velocity = newPlayer.velocity
-                , rotation = newPlayer.rotation
+        oldTranslationLineSegment =
+            { a = curPosition
+            , b = newPosition
             }
 
+        actualTranslation =
+            Maybe.withDefault oldTranslation <|
+                List.head <|
+                    List.sortBy length <|
+                        List.map cropTranslation lineSegments
 
-{-| Given the original player state and a new player state, compute the
-actual future player state taking into account possible translation
-along the line segments the old player touches.
+        cropTranslation lineSegment =
+            case intersection oldTranslationLineSegment lineSegment of
+                Just i ->
+                    sub i curPosition
 
-TODO: also rotate the player if only one corner touches a line segment.
--}
-translateAndRotateAlongLineSegments : Player -> Player -> Player
-translateAndRotateAlongLineSegments oldPlayer newPlayer =
-    let
-        oldTranslation =
-            sub newPlayer.position oldPlayer.position
-
-        newTranslation corner segment =
-            let
-                cornerPosition =
-                    computeCornerPosition corner oldPlayer
-
-                intersection =
-                    intersectionInfiniteLineLineSegment
-                        { anchor =
-                            add cornerPosition
-                                oldTranslation
-                        , direction = vec2 0 1
-                        }
-                        segment
-            in
-                Maybe.map (\i -> sub i cornerPosition) intersection
+                Nothing ->
+                    oldTranslation
     in
-        case Dict.toList oldPlayer.resting of
-            [ ( corner1, lineSegment1 ), ( corner2, lineSegment2 ) ] ->
-                let
-                    v1 =
-                        newTranslation corner1 lineSegment1
-
-                    v2 =
-                        newTranslation corner2 lineSegment2
-                in
-                    case ( v1, v2 ) of
-                        ( Just w1, Just w2 ) ->
-                            --TODO
-                            newPlayer
-
-                        ( Just w, Nothing ) ->
-                            { oldPlayer
-                                | position = add oldPlayer.position w
-                            }
-
-                        ( Nothing, Just w ) ->
-                            { oldPlayer
-                                | position = add oldPlayer.position w
-                            }
-
-                        _ ->
-                            newPlayer
-
-            [ ( corner, lineSegment ) ] ->
-                let
-                    v =
-                        newTranslation corner lineSegment
-                in
-                    case v of
-                        Just w ->
-                            { oldPlayer
-                                | position = add oldPlayer.position w
-                            }
-
-                        Nothing ->
-                            newPlayer
-
-            _ ->
-                newPlayer
+        add curPosition actualTranslation
 
 
-{-| Type to select the corner of a Player.  LowerLeft, ..., UpperRight
-are with respect to the current rotation.  A, ..., D are always the same
-corners.  If rotation == 0, we have A = LowerLeft, B = LowerRight,
-C = UpperRight, D == UpperLeft.  (counterclockwise)
--}
-type Corner
-    = LowerLeft
-    | LowerRight
-    | UpperRight
-    | UpperLeft
-    | A
-    | B
-    | C
-    | D
-
-
-lowerLeftCorner : Player -> Int
-lowerLeftCorner player =
-    (floor (2 * player.rotation / pi + 1 / 2)) % 4
-
-
-lowerRightCorner : Player -> Int
-lowerRightCorner player =
-    if lowerLeftCorner player == 3 then
-        0
-    else
-        lowerLeftCorner player + 1
-
-
-{-| Rotate counter-clockwise
--}
-rotateAroundCorner : Corner -> Float -> Player -> Player
-rotateAroundCorner corner angle player =
+constraintDistance : Float -> ( Vec2, Vec2 ) -> ( Vec2, Vec2 )
+constraintDistance wantedDistance ( v, w ) =
     let
-        cornerPosition =
-            computePosition corner player
+        delta =
+            sub w v
 
-        v =
-            sub player.position cornerPosition
+        actualDistance =
+            length delta
 
-        w =
-            rotate angle v
+        vNew =
+            scale ((actualDistance - wantedDistance) / (2 * actualDistance)) delta
+                |> add v
+
+        wNew =
+            scale ((actualDistance - wantedDistance) / (2 * actualDistance)) delta
+                |> sub w
     in
-        { player
-            | position = add w cornerPosition
-            , rotation = player.rotation + angle
-        }
-
-
-computeCornerPosition : Int -> Player -> Vec2
-computeCornerPosition corner player =
-    let
-        names =
-            [ A
-            , B
-            , C
-            , D
-            ]
-
-        cornerName =
-            List.head <| List.drop corner names
-    in
-        case cornerName of
-            Just name ->
-                computePosition name player
-
-            Nothing ->
-                player.position
-
-
-computePosition : Corner -> Player -> Vec2
-computePosition corner player =
-    let
-        x =
-            player.width / 2
-
-        y =
-            player.height / 2
-
-        permutation =
-            (floor (2 * player.rotation / pi + 1 / 2)) % 4
-
-        rotateAndShift dx dy =
-            add
-                (rotate player.rotation (vec2 dx dy))
-                player.position
-
-        ( a, b, c, d ) =
-            ( rotateAndShift -x y
-            , rotateAndShift x y
-            , rotateAndShift x -y
-            , rotateAndShift -x -y
-            )
-
-        ( ll, lr, ur, ul ) =
-            case permutation of
-                0 ->
-                    ( a, b, c, d )
-
-                1 ->
-                    ( d, a, b, c )
-
-                2 ->
-                    ( c, d, a, b )
-
-                3 ->
-                    ( b, c, d, a )
-
-                _ ->
-                    Debug.crash "this permutation is not possible"
-    in
-        case corner of
-            A ->
-                a
-
-            B ->
-                b
-
-            C ->
-                c
-
-            D ->
-                d
-
-            LowerLeft ->
-                ll
-
-            LowerRight ->
-                lr
-
-            UpperRight ->
-                ur
-
-            UpperLeft ->
-                ul
+        ( vNew, wNew )
 
 
 {-| Rotate the vector counterclockwise.
