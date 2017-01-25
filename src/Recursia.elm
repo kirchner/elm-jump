@@ -99,16 +99,14 @@ type alias Box =
 point.
 -}
 type alias Player =
-    { position : Vec2
-    , moving : Maybe ( Direction, Float )
-    , jumping : Maybe Float
+    { curPosition : Vec2
+    , prevPosition : Vec2
     }
 
 
 defaultPlayer =
-    { position = vec2 220 200
-    , moving = Nothing
-    , jumping = Nothing
+    { curPosition = vec2 220 200
+    , prevPosition = vec2 220 200
     }
 
 
@@ -146,59 +144,17 @@ stepPlayer dt level player =
 propagetePlayer : Time -> Player -> Player
 propagetePlayer dt player =
     let
-        fallingSpeed =
-            vec2 0 0.6
-
-        movementSpeed =
-            case player.moving of
-                Just ( Left, duration ) ->
-                    vec2 (-1 * (animate duration moveAnimation)) 0
-
-                Just ( Right, duration ) ->
-                    vec2 (animate duration moveAnimation) 0
-
-                Nothing ->
-                    vec2 0 0
-
-        moveAnimation =
-            animation 0 |> from 0 |> to 0.6 |> duration 200 |> ease Ease.outCubic
-
-        jumpingSpeed =
-            case player.jumping of
-                Just duration ->
-                    vec2 0 (animate duration jumpAnimation)
-
-                Nothing ->
-                    vec2 0 0
-
-        jumpAnimation =
-            animation 0 |> from -2 |> to 0 |> duration 800 |> ease Ease.outCubic
+        acceleration =
+            vec2 0 0.01
 
         newPosition =
-            player.position
-                |> add (scale dt fallingSpeed)
-                |> add (scale dt movementSpeed)
-                |> add (scale dt jumpingSpeed)
+            add
+                (sub (scale 2 player.curPosition) player.prevPosition)
+                (scale (dt + dt) acceleration)
     in
         { player
-            | position = newPosition
-            , jumping =
-                case player.jumping of
-                    Just duration ->
-                        if duration < 800 then
-                            Just (duration + dt)
-                        else
-                            Nothing
-
-                    Nothing ->
-                        Nothing
-            , moving =
-                case player.moving of
-                    Just ( direction, duration ) ->
-                        Just ( direction, duration + dt )
-
-                    Nothing ->
-                        Nothing
+            | curPosition = newPosition
+            , prevPosition = player.curPosition
         }
 
 
@@ -211,7 +167,7 @@ constraintBoundingBox : Player -> Player
 constraintBoundingBox player =
     let
         ( x, y ) =
-            toTuple player.position
+            toTuple player.curPosition
 
         newX =
             bindTo 20 620 x
@@ -228,7 +184,7 @@ constraintBoundingBox player =
                 t
     in
         { player
-            | position = vec2 newX newY
+            | curPosition = vec2 newX newY
         }
 
 
@@ -244,11 +200,15 @@ execute action state =
 
         Jump ->
             let
+                delta =
+                    vec2 0 10
+
                 newPlayer =
                     state.player
                         |> (\player ->
                                 { player
-                                    | jumping = Just 0
+                                    | prevPosition =
+                                        add player.prevPosition delta
                                 }
                            )
             in
@@ -259,11 +219,20 @@ execute action state =
 
         Move direction ->
             let
+                delta =
+                    case direction of
+                        Left ->
+                            vec2 5 0
+
+                        Right ->
+                            vec2 -5 0
+
                 newPlayer =
                     state.player
                         |> (\player ->
                                 { player
-                                    | moving = Just ( direction, 0 )
+                                    | prevPosition =
+                                        add player.prevPosition delta
                                 }
                            )
             in
@@ -278,7 +247,10 @@ execute action state =
                     state.player
                         |> (\player ->
                                 { player
-                                    | moving = Nothing
+                                    | prevPosition =
+                                        vec2
+                                            (getX player.curPosition)
+                                            (getY player.prevPosition)
                                 }
                            )
             in
@@ -392,7 +364,7 @@ drawPlayer : Player -> Svg a
 drawPlayer player =
     let
         ( x, y ) =
-            toTuple <| add player.position (vec2 -20 -40)
+            toTuple <| add player.curPosition (vec2 -20 -40)
 
         ( width, height ) =
             ( 40, 40 )
