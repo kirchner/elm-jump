@@ -79,11 +79,14 @@ type alias Level =
 testLevel : Level
 testLevel =
     { ground =
-        [ { upperLeft = vec2 320 200
-          , lowerRight = vec2 600 240
+        [ { upperLeft = vec2 0 40
+          , lowerRight = vec2 400 80
           }
-        , { upperLeft = vec2 80 400
-          , lowerRight = vec2 260 440
+        , { upperLeft = vec2 320 200
+          , lowerRight = vec2 640 240
+          }
+        , { upperLeft = vec2 0 400
+          , lowerRight = vec2 260 640
           }
         ]
     }
@@ -303,9 +306,9 @@ bind keycode pressed =
 draw : Time -> State -> Html Action
 draw dt state =
     Svg.svg
-        [ Svg.width "400"
-        , Svg.height "400"
-        , Svg.viewBox "-10 -10 700 700"
+        [ Svg.width "330"
+        , Svg.height "330"
+        , Svg.viewBox "-10 -10 660 660"
         ]
         [ drawLevel state.level
         , drawPlayer state.player
@@ -317,13 +320,13 @@ drawLevel level =
     let
         boundingBox =
             Svg.rect
-                [ Svg.x "0"
-                , Svg.y "0"
-                , Svg.width "640"
-                , Svg.height "640"
+                [ Svg.x "-2"
+                , Svg.y "-2"
+                , Svg.width "644"
+                , Svg.height "644"
                 , Svg.fill "#f4c6c6"
-                , Svg.stroke "#9f1f66"
-                , Svg.strokeWidth "3"
+                , Svg.stroke "#c54173"
+                , Svg.strokeWidth "4"
                 ]
                 []
 
@@ -352,10 +355,9 @@ drawBox box =
             , Svg.width <| toString width
             , Svg.height <| toString height
             , Svg.fill "#c54173"
-            , Svg.stroke "#9f1f66"
-            , Svg.strokeWidth "3"
-            , Svg.rx "6"
-            , Svg.ry "6"
+            , Svg.strokeWidth "0"
+            , Svg.rx "0"
+            , Svg.ry "0"
             ]
             []
 
@@ -375,8 +377,7 @@ drawPlayer player =
             , Svg.width <| toString width
             , Svg.height <| toString height
             , Svg.fill "#db4e70"
-            , Svg.stroke "black"
-            , Svg.strokeWidth "3"
+            , Svg.strokeWidth "0"
             , Svg.rx "6"
             , Svg.ry "6"
             ]
