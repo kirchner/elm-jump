@@ -13,8 +13,8 @@ import Math.Vector2 exposing (Vec2, vec2)
 -- MODEL
 
 
-type alias Model state cmd =
-    { gameLogic : GameLogic state cmd
+type alias Model state action =
+    { gameLogic : GameLogic state action
     , state : state
     , stateTime : Time
     , currentTime : Time
@@ -23,7 +23,7 @@ type alias Model state cmd =
     }
 
 
-defaultModel : GameLogic state cmd -> state -> Model state cmd
+defaultModel : GameLogic state action -> state -> Model state action
 defaultModel gameLogic initState =
     { gameLogic = gameLogic
     , state = initState
@@ -38,13 +38,13 @@ defaultModel gameLogic initState =
 -- GAMELOGIC
 
 
-type alias GameLogic state cmd =
+type alias GameLogic state action =
     { defaultState : state
-    , execute : cmd -> state -> ( state, Cmd cmd )
-    , bind : Keyboard.KeyCode -> Bool -> cmd
+    , execute : action -> state -> ( state, Cmd action )
+    , bind : Keyboard.KeyCode -> Bool -> action
     , step : Time -> state -> state
-    , draw : Time -> state -> Html cmd
-    , init : ( state, Cmd cmd )
+    , draw : Time -> state -> Html action
+    , init : ( state, Cmd action )
     }
 
 
@@ -52,7 +52,7 @@ type alias GameLogic state cmd =
 -- MSG
 
 
-type Msg cmd
+type Msg action
     = NoOp
     | Init Time
     | Pause Time
@@ -65,10 +65,10 @@ type Msg cmd
     | KeyDown Keyboard.KeyCode
     | KeyUp Keyboard.KeyCode
     | Mouse Mouse.Position
-    | Async cmd
+    | Async action
 
 
-trivialLift : cmd -> Msg cmd
+trivialLift : action -> Msg action
 trivialLift msg =
     NoOp
 
@@ -77,17 +77,17 @@ trivialLift msg =
 -- INIT
 
 
-init : GameLogic state cmd -> ( Model state cmd, Cmd (Msg cmd) )
+init : GameLogic state action -> ( Model state action, Cmd (Msg action) )
 init gameLogic =
     let
-        ( initState, initCmd ) =
+        ( initState, initAction ) =
             gameLogic.init
     in
         ( defaultModel gameLogic initState
         , Cmd.batch
             [ Task.perform Init Time.now
             , Task.perform Redraw Time.now
-            , initCmd |> Cmd.map Async
+            , initAction |> Cmd.map Async
             ]
         )
 
@@ -96,7 +96,7 @@ init gameLogic =
 -- UPDATE
 
 
-update : Msg cmd -> Model state cmd -> ( Model state cmd, Cmd (Msg cmd) )
+update : Msg action -> Model state action -> ( Model state action, Cmd (Msg action) )
 update msg model =
     case msg of
         NoOp ->
@@ -163,23 +163,23 @@ update msg model =
 
         KeyDown keycode ->
             let
-                cmd =
+                action =
                     model.gameLogic.bind keycode True
 
-                ( newState, newCmd ) =
-                    model.gameLogic.execute cmd model.state
+                ( newState, newAction ) =
+                    model.gameLogic.execute action model.state
             in
-                { model | state = newState } ! [ newCmd |> Cmd.map Async ]
+                { model | state = newState } ! [ newAction |> Cmd.map Async ]
 
         KeyUp keycode ->
             let
-                cmd =
+                action =
                     model.gameLogic.bind keycode False
 
-                ( newState, newCmd ) =
-                    model.gameLogic.execute cmd model.state
+                ( newState, newAction ) =
+                    model.gameLogic.execute action model.state
             in
-                { model | state = newState } ! [ newCmd |> Cmd.map Async ]
+                { model | state = newState } ! [ newAction |> Cmd.map Async ]
 
         Mouse position ->
             let
@@ -188,33 +188,27 @@ update msg model =
             in
                 { model | cursor = cursor } ! []
 
-        Async cmd ->
+        Async action ->
             let
-                ( newState, newCmd ) =
-                    model.gameLogic.execute cmd model.state
+                ( newState, newAction ) =
+                    model.gameLogic.execute action model.state
             in
-                { model | state = newState } ! [ newCmd |> Cmd.map Async ]
+                { model | state = newState } ! [ newAction |> Cmd.map Async ]
 
 
 
 -- SUBSCRIPTIONS
 
 
-subscriptions : Model state cmd -> Sub (Msg cmd)
+subscriptions : Model state action -> Sub (Msg action)
 subscriptions model =
     let
-        --        tick =
-        --            if model.paused then
-        --                Sub.none
-        --            else
-        --                Time.every (100 * Time.millisecond) Tick
         redraw =
             if model.paused then
                 Sub.none
             else
                 AnimationFrame.times Tick
 
-        --Time.every (50 * Time.millisecond) Tick
         keyDowns =
             Keyboard.downs KeyDown
 
@@ -225,11 +219,10 @@ subscriptions model =
             Mouse.moves Mouse
     in
         Sub.batch
-            --            [ tick
             [ redraw
             , keyDowns
             , keyUps
-              --, mouse
+            , mouse
             ]
 
 
@@ -237,7 +230,7 @@ subscriptions model =
 -- VIEW
 
 
-view : Model state cmd -> Html (Msg cmd)
+view : Model state action -> Html (Msg action)
 view model =
     let
         render =
@@ -262,7 +255,7 @@ view model =
                 ]
 
 
-engine : GameLogic state cmd -> Program Never (Model state cmd) (Msg cmd)
+engine : GameLogic state action -> Program Never (Model state action) (Msg action)
 engine gameLogic =
     Html.program
         { init = init gameLogic

@@ -104,12 +104,14 @@ point.
 type alias Player =
     { curPosition : Vec2
     , prevPosition : Vec2
+    , move : Maybe ( Direction, Float )
     }
 
 
 defaultPlayer =
     { curPosition = vec2 220 200
     , prevPosition = vec2 220 200
+    , move = Nothing
     }
 
 
@@ -220,10 +222,10 @@ execute action state =
                 }
                     ! []
 
-        Move direction ->
+        Move newDirection ->
             let
                 delta =
-                    case direction of
+                    case newDirection of
                         Left ->
                             vec2 5 0
 
@@ -233,10 +235,23 @@ execute action state =
                 newPlayer =
                     state.player
                         |> (\player ->
-                                { player
-                                    | prevPosition =
-                                        add player.prevPosition delta
-                                }
+                                case player.move of
+                                    Just ( prevDirection, duration ) ->
+                                        if prevDirection == newDirection then
+                                            player
+                                        else
+                                            { player
+                                                | prevPosition =
+                                                    add player.prevPosition delta
+                                                , move = Just ( newDirection, 0 )
+                                            }
+
+                                    Nothing ->
+                                        { player
+                                            | prevPosition =
+                                                add player.prevPosition delta
+                                            , move = Just ( newDirection, 0 )
+                                        }
                            )
             in
                 { state
@@ -254,6 +269,7 @@ execute action state =
                                         vec2
                                             (getX player.curPosition)
                                             (getY player.prevPosition)
+                                    , move = Nothing
                                 }
                            )
             in
