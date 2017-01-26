@@ -165,7 +165,8 @@ propagetePlayer dt player =
 
 constraintPlayer : List Box -> Player -> Player -> Player
 constraintPlayer ground newPlayer curPlayer =
-    constraintBoundingBox newPlayer
+    constraintBoundingBox <|
+        List.foldr constraintBox (constraintBoundingBox newPlayer) ground
 
 
 constraintBoundingBox : Player -> Player
@@ -191,6 +192,68 @@ constraintBoundingBox player =
         { player
             | curPosition = vec2 newX newY
         }
+
+
+constraintBox : Box -> Player -> Player
+constraintBox box player =
+    let
+        ( x, y ) =
+            toTuple player.curPosition
+
+        ( playerCenterX, playerCenterY ) =
+            ( x, y - 20 )
+
+        ( playerWidth, playerHeight ) =
+            ( 40, 40 )
+
+        ( qx, qy ) =
+            toTuple box.upperLeft
+
+        ( px, py ) =
+            toTuple box.lowerRight
+
+        ( boxCenterX, boxCenterY ) =
+            ( (qx + px) / 2, (qy + py) / 2 )
+
+        ( boxWidth, boxHeight ) =
+            ( px - qx, py - qy )
+
+        xOverlap =
+            abs (playerCenterX - boxCenterX) - (playerWidth + boxWidth) / 2
+
+        yOverlap =
+            abs (playerCenterY - boxCenterY) - (playerHeight + boxHeight) / 2
+    in
+        if (xOverlap < 0) && (yOverlap < 0) then
+            -- box and player intersect
+            if xOverlap >= yOverlap then
+                if playerCenterX <= boxCenterX then
+                    -- move to the left
+                    { player
+                        | curPosition =
+                            sub player.curPosition (vec2 xOverlap 0)
+                    }
+                else
+                    -- move to the right
+                    { player
+                        | curPosition =
+                            sub player.curPosition (vec2 xOverlap 0)
+                    }
+            else if playerCenterY <= boxCenterY then
+                -- move up
+                { player
+                    | curPosition =
+                        add player.curPosition (vec2 0 yOverlap)
+                }
+            else
+                -- move down
+                { player
+                    | curPosition =
+                        sub player.curPosition (vec2 0 yOverlap)
+                }
+        else
+            -- box and player do not intersect
+            player
 
 
 
@@ -322,8 +385,8 @@ bind keycode pressed =
 draw : Time -> State -> Html Action
 draw dt state =
     Svg.svg
-        [ Svg.width "330"
-        , Svg.height "330"
+        [ Svg.width "660"
+        , Svg.height "660"
         , Svg.viewBox "-10 -10 660 660"
         ]
         [ drawLevel state.level
