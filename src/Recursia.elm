@@ -88,6 +88,12 @@ testLevel =
         , { upperLeft = vec2 0 400
           , lowerRight = vec2 260 640
           }
+        , { upperLeft = vec2 260 500
+          , lowerRight = vec2 300 640
+          }
+        , { upperLeft = vec2 300 550
+          , lowerRight = vec2 380 640
+          }
         ]
     }
 
@@ -102,15 +108,15 @@ type alias Box =
 point.
 -}
 type alias Player =
-    { curPosition : Vec2
-    , prevPosition : Vec2
+    { position : Vec2
+    , velocity : Vec2
     , move : Maybe ( Direction, Float )
     }
 
 
 defaultPlayer =
-    { curPosition = vec2 220 200
-    , prevPosition = vec2 220 200
+    { position = vec2 220 200
+    , velocity = vec2 0 0
     , move = Nothing
     }
 
@@ -150,16 +156,17 @@ propagetePlayer : Time -> Player -> Player
 propagetePlayer dt player =
     let
         acceleration =
-            vec2 0 0.01
+            vec2 0 0.001
+
+        newVelocity =
+            add player.velocity (scale dt acceleration)
 
         newPosition =
-            add
-                (sub (scale 2 player.curPosition) player.prevPosition)
-                (scale (dt + dt) acceleration)
+            add player.position (scale dt newVelocity)
     in
         { player
-            | curPosition = newPosition
-            , prevPosition = player.curPosition
+            | position = newPosition
+            , velocity = newVelocity
         }
 
 
@@ -173,7 +180,7 @@ constraintBoundingBox : Player -> Player
 constraintBoundingBox player =
     let
         ( x, y ) =
-            toTuple player.curPosition
+            toTuple player.position
 
         newX =
             bindTo 20 620 x
@@ -188,9 +195,16 @@ constraintBoundingBox player =
                 b
             else
                 t
+
+        newVelocity =
+            if newY == 640 then
+                vec2 (getX player.velocity) 0
+            else
+                player.velocity
     in
         { player
-            | curPosition = vec2 newX newY
+            | position = vec2 newX newY
+            , velocity = newVelocity
         }
 
 
@@ -198,7 +212,7 @@ constraintBox : Box -> Player -> Player
 constraintBox box player =
     let
         ( x, y ) =
-            toTuple player.curPosition
+            toTuple player.position
 
         ( playerCenterX, playerCenterY ) =
             ( x, y - 20 )
@@ -230,26 +244,30 @@ constraintBox box player =
                 if playerCenterX <= boxCenterX then
                     -- move to the left
                     { player
-                        | curPosition =
-                            sub player.curPosition (vec2 xOverlap 0)
+                        | position =
+                            sub player.position (vec2 xOverlap 0)
                     }
                 else
                     -- move to the right
                     { player
-                        | curPosition =
-                            sub player.curPosition (vec2 xOverlap 0)
+                        | position =
+                            sub player.position (vec2 xOverlap 0)
                     }
             else if playerCenterY <= boxCenterY then
                 -- move up
                 { player
-                    | curPosition =
-                        add player.curPosition (vec2 0 yOverlap)
+                    | position =
+                        add player.position (vec2 0 yOverlap)
+                    , velocity =
+                        vec2 (getX player.velocity) 0
                 }
             else
                 -- move down
                 { player
-                    | curPosition =
-                        sub player.curPosition (vec2 0 yOverlap)
+                    | position =
+                        sub player.position (vec2 0 yOverlap)
+                    , velocity =
+                        vec2 (getX player.velocity) 0
                 }
         else
             -- box and player do not intersect
@@ -268,15 +286,18 @@ execute action state =
 
         Jump ->
             let
-                delta =
-                    vec2 0 10
+                jumpSpeed =
+                    if getY state.player.velocity == 0 then
+                        -0.5
+                    else
+                        0
 
                 newPlayer =
                     state.player
                         |> (\player ->
                                 { player
-                                    | prevPosition =
-                                        add player.prevPosition delta
+                                    | velocity =
+                                        add player.velocity (vec2 0 jumpSpeed)
                                 }
                            )
             in
@@ -290,10 +311,10 @@ execute action state =
                 delta =
                     case newDirection of
                         Left ->
-                            vec2 5 0
+                            vec2 -0.3 0
 
                         Right ->
-                            vec2 -5 0
+                            vec2 0.3 0
 
                 newPlayer =
                     state.player
@@ -304,15 +325,15 @@ execute action state =
                                             player
                                         else
                                             { player
-                                                | prevPosition =
-                                                    add player.prevPosition delta
+                                                | velocity =
+                                                    vec2 (getX delta) (getY player.velocity)
                                                 , move = Just ( newDirection, 0 )
                                             }
 
                                     Nothing ->
                                         { player
-                                            | prevPosition =
-                                                add player.prevPosition delta
+                                            | velocity =
+                                                vec2 (getX delta) (getY player.velocity)
                                             , move = Just ( newDirection, 0 )
                                         }
                            )
@@ -328,10 +349,8 @@ execute action state =
                     state.player
                         |> (\player ->
                                 { player
-                                    | prevPosition =
-                                        vec2
-                                            (getX player.curPosition)
-                                            (getY player.prevPosition)
+                                    | velocity =
+                                        vec2 0 (getY player.velocity)
                                     , move = Nothing
                                 }
                            )
@@ -445,7 +464,7 @@ drawPlayer : Player -> Svg a
 drawPlayer player =
     let
         ( x, y ) =
-            toTuple <| add player.curPosition (vec2 -20 -40)
+            toTuple <| add player.position (vec2 -20 -40)
 
         ( width, height ) =
             ( 40, 40 )
