@@ -1,262 +1,166 @@
 module Player exposing (..)
 
-import Dict exposing (Dict)
-import Math.Vector2 exposing (..)
+-- external
+
 import Time exposing (Time)
+import Math.Vector2 exposing (..)
 
 
-{-| State of one player entity.  Position is given wrt the center.
-Rotation tells how much radians it is rotated counterclockwise.
+-- internal
+
+import Helpers exposing (..)
+
+
+{-| The players bounding box is 40x40.  The Position is the lower middle
+point.
 -}
 type alias Player =
-    { positions :
-        { a : Vec2
-        , b : Vec2
-        , c : Vec2
-        , d : Vec2
-        }
-    , width : Float
-    , height : Float
-    , color : String
-    , active : Bool
+    { position : Vec2
+    , velocity : Vec2
+    , move : Maybe ( Direction, Float )
     }
 
 
-defaultPlayer : Player
-defaultPlayer =
-    { positions =
-        { a = vec2 0 0
-        , b = vec2 0 10
-        , c = vec2 10 10
-        , d = vec2 10 0
-        }
-    , width = 10
-    , height = 10
-    , color = "#000"
-    , active = False
+default =
+    { position = vec2 220 200
+    , velocity = vec2 0 0
+    , move = Nothing
     }
 
 
-stepPlayer : Time -> List LineSegment -> Player -> Player -> Player
-stepPlayer dt lineSegments curPlayer prevPlayer =
+
+-- STEP
+
+
+step : Time -> List Box -> Player -> Player
+step dt ground player =
     let
         propagatedPlayer =
-            velvetPlayer dt curPlayer prevPlayer
+            propagete dt player
 
-        newPlayer =
-            constraintPlayer lineSegments propagatedPlayer curPlayer
+        actualPlayer =
+            constraint ground propagatedPlayer player
     in
-        newPlayer
+        actualPlayer
 
 
-velvetPlayer : Time -> Player -> Player -> Player
-velvetPlayer dt curPlayer prevPlayer =
+propagete : Time -> Player -> Player
+propagete dt player =
     let
-        -- we only consider gravitational acceleration for the moment
         acceleration =
-            vec2 0 0.0005
+            vec2 0 0.001
 
-        newPositions =
-            { a = velvetPosition .a
-            , b = velvetPosition .b
-            , c = velvetPosition .c
-            , d = velvetPosition .d
-            }
+        newVelocity =
+            add player.velocity (scale dt acceleration)
 
-        velvetPosition accessor =
-            sub (scale 2 (accessor curPlayer.positions)) (accessor prevPlayer.positions)
-                |> add (scale (dt * dt) acceleration)
+        newPosition =
+            add player.position (scale dt newVelocity)
     in
-        { curPlayer | positions = newPositions }
-
-
-constraintPlayer : List LineSegment -> Player -> Player -> Player
-constraintPlayer lineSegments newPlayer curPlayer =
-    let
-        collidedPoints =
-            { a = collidedPoint .a
-            , b = collidedPoint .b
-            , c = collidedPoint .c
-            , d = collidedPoint .d
-            }
-
-        collidedPoint accessor =
-            constraintCollision
-                lineSegments
-                (accessor newPlayer.positions)
-                (accessor curPlayer.positions)
-
-        ( a1, b1 ) =
-            constraintDistance
-                newPlayer.height
-                ( collidedPoints.a, collidedPoints.b )
-
-        ( b2, c1 ) =
-            constraintDistance
-                newPlayer.width
-                ( b1, collidedPoints.c )
-
-        ( c2, d1 ) =
-            constraintDistance
-                newPlayer.height
-                ( c1, collidedPoints.d )
-
-        ( d2, a2 ) =
-            constraintDistance
-                newPlayer.width
-                ( d1, a1 )
-    in
-        { newPlayer
-            | positions =
-                { a = a2
-                , b = b2
-                , c = c2
-                , d = d2
-                }
+        { player
+            | position = newPosition
+            , velocity = newVelocity
         }
 
 
-constraintCollision : List LineSegment -> Vec2 -> Vec2 -> Vec2
-constraintCollision lineSegments newPosition curPosition =
-    let
-        oldTranslation =
-            sub newPosition curPosition
-
-        oldTranslationLineSegment =
-            { a = curPosition
-            , b = newPosition
-            }
-
-        actualTranslation =
-            Maybe.withDefault oldTranslation <|
-                List.head <|
-                    List.sortBy length <|
-                        List.map cropTranslation lineSegments
-
-        cropTranslation lineSegment =
-            case intersection oldTranslationLineSegment lineSegment of
-                Just i ->
-                    sub i curPosition
-
-                Nothing ->
-                    oldTranslation
-    in
-        add curPosition actualTranslation
+constraint : List Box -> Player -> Player -> Player
+constraint ground newPlayer curPlayer =
+    constraintBoundingBox <|
+        List.foldr constraintBox (constraintBoundingBox newPlayer) ground
 
 
-constraintDistance : Float -> ( Vec2, Vec2 ) -> ( Vec2, Vec2 )
-constraintDistance wantedDistance ( v, w ) =
-    let
-        delta =
-            sub w v
-
-        actualDistance =
-            length delta
-
-        vNew =
-            scale ((actualDistance - wantedDistance) / (2 * actualDistance)) delta
-                |> add v
-
-        wNew =
-            scale ((actualDistance - wantedDistance) / (2 * actualDistance)) delta
-                |> sub w
-    in
-        ( vNew, wNew )
-
-
-{-| Rotate the vector counterclockwise.
--}
-rotate : Float -> Vec2 -> Vec2
-rotate angle v =
+constraintBoundingBox : Player -> Player
+constraintBoundingBox player =
     let
         ( x, y ) =
-            toTuple v
+            toTuple player.position
+
+        newX =
+            bindTo 20 620 x
+
+        newY =
+            bindTo 40 640 y
+
+        bindTo a b t =
+            if t <= a then
+                a
+            else if t >= b then
+                b
+            else
+                t
+
+        newVelocity =
+            if newY == 640 then
+                vec2 (getX player.velocity) 0
+            else
+                player.velocity
     in
-        vec2
-            (cos angle * x + sin angle * y)
-            (-1 * sin angle * x + cos angle * y)
+        { player
+            | position = vec2 newX newY
+            , velocity = newVelocity
+        }
 
 
-type alias LineSegment =
-    { a : Vec2
-    , b : Vec2
-    }
-
-
-type alias InfiniteLine =
-    { anchor : Vec2
-    , direction : Vec2
-    }
-
-
-intersectionInfiniteLineLineSegment : InfiniteLine -> LineSegment -> Maybe Vec2
-intersectionInfiniteLineLineSegment infiniteLine lineSegment =
+constraintBox : Box -> Player -> Player
+constraintBox box player =
     let
-        v =
-            infiniteLine.direction
+        ( x, y ) =
+            toTuple player.position
 
-        w =
-            sub lineSegment.b lineSegment.a
+        ( playerCenterX, playerCenterY ) =
+            ( x, y - 20 )
 
-        d =
-            sub lineSegment.a infiniteLine.anchor
+        ( playerWidth, playerHeight ) =
+            ( 40, 40 )
 
-        n =
-            crossProduct v w
+        ( qx, qy ) =
+            toTuple box.upperLeft
+
+        ( px, py ) =
+            toTuple box.lowerRight
+
+        ( boxCenterX, boxCenterY ) =
+            ( (qx + px) / 2, (qy + py) / 2 )
+
+        ( boxWidth, boxHeight ) =
+            ( px - qx, py - qy )
+
+        xOverlap =
+            abs (playerCenterX - boxCenterX) - (playerWidth + boxWidth) / 2
+
+        yOverlap =
+            abs (playerCenterY - boxCenterY) - (playerHeight + boxHeight) / 2
     in
-        if n == 0 then
-            Nothing
-        else
-            let
-                s =
-                    crossProduct d w / crossProduct v w
-
-                t =
-                    crossProduct d v / crossProduct v w
-
-                between a b z =
-                    (z > a) && (z < b)
-            in
-                if (t |> between 0 1) then
-                    Just (add infiniteLine.anchor (scale s v))
+        if (xOverlap < 0) && (yOverlap < 0) then
+            -- box and player intersect
+            if xOverlap >= yOverlap then
+                if playerCenterX <= boxCenterX then
+                    -- move to the left
+                    { player
+                        | position =
+                            sub player.position (vec2 xOverlap 0)
+                    }
                 else
-                    Nothing
-
-
-intersection : LineSegment -> LineSegment -> Maybe Vec2
-intersection l1 l2 =
-    let
-        v =
-            sub l1.b l1.a
-
-        w =
-            sub l2.b l2.a
-
-        d =
-            sub l2.a l1.a
-
-        n =
-            crossProduct v w
-    in
-        if n == 0 then
-            Nothing
+                    -- move to the right
+                    { player
+                        | position =
+                            sub player.position (vec2 xOverlap 0)
+                    }
+            else if playerCenterY <= boxCenterY then
+                -- move up
+                { player
+                    | position =
+                        add player.position (vec2 0 yOverlap)
+                    , velocity =
+                        vec2 (getX player.velocity) 0
+                }
+            else
+                -- move down
+                { player
+                    | position =
+                        sub player.position (vec2 0 yOverlap)
+                    , velocity =
+                        vec2 (getX player.velocity) 0
+                }
         else
-            let
-                s =
-                    crossProduct d w / crossProduct v w
-
-                t =
-                    crossProduct d v / crossProduct v w
-
-                between a b z =
-                    (z >= a) && (z <= b)
-            in
-                if (between 0 1 s) && (between 0 1 t) then
-                    Just (add l1.a (scale s v))
-                else
-                    Nothing
-
-
-crossProduct : Vec2 -> Vec2 -> Float
-crossProduct v w =
-    (getX v) * (getY w) - (getX w) * (getY v)
+            -- box and player do not intersect
+            player
