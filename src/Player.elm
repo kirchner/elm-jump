@@ -28,6 +28,29 @@ default =
     }
 
 
+move : Maybe Direction -> Player -> Player
+move direction player =
+    case direction of
+        Just Left ->
+            case player.move of
+                Just ( Left, _ ) ->
+                    player
+
+                _ ->
+                    { player | move = Just ( Left, 0 ) }
+
+        Just Right ->
+            case player.move of
+                Just ( Right, _ ) ->
+                    player
+
+                _ ->
+                    { player | move = Just ( Right, 0 ) }
+
+        Nothing ->
+            { player | move = Nothing }
+
+
 
 -- STEP
 
@@ -35,8 +58,24 @@ default =
 step : Time -> List Box -> Player -> Player
 step dt ground player =
     let
+        velocity =
+            case player.move of
+                Just ( Left, duration ) ->
+                    -0.3 * cropTo 0 1 (duration / 400)
+
+                Just ( Right, duration ) ->
+                    0.3 * cropTo 0 1 (duration / 400)
+
+                Nothing ->
+                    0
+
         propagatedPlayer =
-            propagete dt player
+            propagate dt
+                { player
+                    | velocity = vec2 velocity (getY player.velocity)
+                    , move =
+                        Maybe.map (\( dir, dur ) -> ( dir, dur + dt )) player.move
+                }
 
         actualPlayer =
             constraint ground propagatedPlayer player
@@ -44,8 +83,8 @@ step dt ground player =
         actualPlayer
 
 
-propagete : Time -> Player -> Player
-propagete dt player =
+propagate : Time -> Player -> Player
+propagate dt player =
     let
         acceleration =
             vec2 0 0.001
@@ -75,18 +114,10 @@ constraintBoundingBox player =
             toTuple player.position
 
         newX =
-            bindTo 20 620 x
+            cropTo 20 620 x
 
         newY =
-            bindTo 40 640 y
-
-        bindTo a b t =
-            if t <= a then
-                a
-            else if t >= b then
-                b
-            else
-                t
+            cropTo 40 640 y
 
         newVelocity =
             if newY == 640 then

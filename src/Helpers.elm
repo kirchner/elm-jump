@@ -12,3 +12,13 @@ type alias Box =
 type Direction
     = Left
     | Right
+
+
+cropTo : Float -> Float -> Float -> Float
+cropTo a b t =
+    if t <= a then
+        a
+    else if t >= b then
+        b
+    else
+        t
