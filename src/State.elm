@@ -46,6 +46,7 @@ init =
 
 type Action
     = NoOp
+    | ChargeJump
     | Jump
     | Move Direction
     | Stop

@@ -64,7 +64,7 @@ bind keycode pressed =
         case keycode of
             -- spacebar
             32 ->
-                Jump
+                ChargeJump
 
             -- left
             37 ->
@@ -78,6 +78,10 @@ bind keycode pressed =
                 NoOp
     else
         case keycode of
+            -- spacebar
+            32 ->
+                Jump
+
             -- left
             37 ->
                 Stop

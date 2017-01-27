@@ -18,38 +18,14 @@ execute action state =
         NoOp ->
             state ! []
 
-        Jump ->
-            let
-                jumpSpeed =
-                    if getY state.player.velocity == 0 then
-                        -0.5
-                    else
-                        0
+        ChargeJump ->
+            { state | player = Player.chargeJump state.player } ! []
 
-                newPlayer =
-                    state.player
-                        |> (\player ->
-                                { player
-                                    | velocity =
-                                        add player.velocity (vec2 0 jumpSpeed)
-                                }
-                           )
-            in
-                { state
-                    | player = newPlayer
-                }
-                    ! []
+        Jump ->
+            { state | player = Player.jump state.player } ! []
 
         Move newDirection ->
-            { state
-                | player =
-                    Player.move (Just newDirection) state.player
-            }
-                ! []
+            { state | player = Player.move (Just newDirection) state.player } ! []
 
         Stop ->
-            { state
-                | player =
-                    Player.move Nothing state.player
-            }
-                ! []
+            { state | player = Player.move Nothing state.player } ! []

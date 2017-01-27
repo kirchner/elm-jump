@@ -78,11 +78,14 @@ drawBox box =
 drawPlayer : Player -> Svg a
 drawPlayer player =
     let
+        box =
+            Player.computeBox player
+
         ( x, y ) =
-            toTuple <| add player.position (vec2 -20 -40)
+            toTuple box.upperLeft
 
         ( width, height ) =
-            ( 40, 40 )
+            toTuple (sub box.lowerRight box.upperLeft)
     in
         Svg.rect
             [ Svg.x <| toString x

@@ -18,6 +18,8 @@ type alias Player =
     { position : Vec2
     , velocity : Vec2
     , move : Maybe ( Direction, Float )
+    , jumpCharge : Maybe Float
+    , jumpChargeTime : Float
     }
 
 
@@ -25,7 +27,42 @@ default =
     { position = vec2 220 200
     , velocity = vec2 0 0
     , move = Nothing
+    , jumpCharge = Nothing
+    , jumpChargeTime = 700
     }
+
+
+
+-- COMPUTE
+
+
+computeBox : Player -> Box
+computeBox player =
+    let
+        scaling =
+            case player.jumpCharge of
+                Just duration ->
+                    1 - cropTo 0 1 (duration / player.jumpChargeTime)
+
+                Nothing ->
+                    1
+
+        height =
+            30 * scaling + 10
+
+        width =
+            40 + 40 * (1 - scaling)
+
+        ( x, y ) =
+            toTuple player.position
+    in
+        { upperLeft = vec2 (x - width / 2) (y - height)
+        , lowerRight = vec2 (x + width / 2) y
+        }
+
+
+
+-- ACTION
 
 
 move : Maybe Direction -> Player -> Player
@@ -49,6 +86,39 @@ move direction player =
 
         Nothing ->
             { player | move = Nothing }
+
+
+chargeJump : Player -> Player
+chargeJump player =
+    case player.jumpCharge of
+        Just _ ->
+            player
+
+        Nothing ->
+            if getY player.velocity == 0 then
+                { player | jumpCharge = Just 0 }
+            else
+                player
+
+
+jump : Player -> Player
+jump player =
+    case player.jumpCharge of
+        Just duration ->
+            let
+                jumpSpeed =
+                    if getY player.velocity == 0 then
+                        -1 * cropTo 0 1 (duration / player.jumpChargeTime)
+                    else
+                        0
+            in
+                { player
+                    | velocity = add player.velocity (vec2 0 jumpSpeed)
+                    , jumpCharge = Nothing
+                }
+
+        Nothing ->
+            player
 
 
 
@@ -75,6 +145,8 @@ step dt ground player =
                     | velocity = vec2 velocity (getY player.velocity)
                     , move =
                         Maybe.map (\( dir, dur ) -> ( dir, dur + dt )) player.move
+                    , jumpCharge =
+                        Maybe.map (\dur -> dur + dt) player.jumpCharge
                 }
 
         actualPlayer =
@@ -113,11 +185,17 @@ constraintBoundingBox player =
         ( x, y ) =
             toTuple player.position
 
+        playerBox =
+            computeBox player
+
+        ( playerWidth, playerHeight ) =
+            toTuple (sub playerBox.lowerRight playerBox.upperLeft)
+
         newX =
-            cropTo 20 620 x
+            cropTo (playerWidth / 2) (640 - playerWidth / 2) x
 
         newY =
-            cropTo 40 640 y
+            cropTo playerHeight 640 y
 
         newVelocity =
             if newY == 640 then
@@ -134,14 +212,14 @@ constraintBoundingBox player =
 constraintBox : Box -> Player -> Player
 constraintBox box player =
     let
-        ( x, y ) =
-            toTuple player.position
+        playerBox =
+            computeBox player
 
         ( playerCenterX, playerCenterY ) =
-            ( x, y - 20 )
+            toTuple (scale (1 / 2) (add playerBox.upperLeft playerBox.lowerRight))
 
         ( playerWidth, playerHeight ) =
-            ( 40, 40 )
+            toTuple (sub playerBox.lowerRight playerBox.upperLeft)
 
         ( qx, qy ) =
             toTuple box.upperLeft
